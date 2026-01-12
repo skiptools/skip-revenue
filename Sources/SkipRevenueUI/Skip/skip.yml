@@ -10,4 +10,4 @@ build:
   contents:
     - block: 'dependencies'
       contents:
-        - 'implementation("com.revenuecat.purchases:purchases-ui:9.8.0")'
+        - 'implementation("com.revenuecat.purchases:purchases-ui:9.19.0")'

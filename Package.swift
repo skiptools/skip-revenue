@@ -21,13 +21,17 @@ let package = Package(
             .product(name: "SkipFoundation", package: "skip-foundation"),
             .product(name: "RevenueCat", package: "purchases-ios", condition: .when(platforms: [.iOS, .macOS]))
         ], resources: [.process("Resources")], plugins: [.plugin(name: "skipstone", package: "skip")]),
+        .testTarget(name: "SkipRevenueTests", dependencies: [
+            "SkipRevenue",
+            .product(name: "SkipTest", package: "skip")
+        ], resources: [.process("Resources")], plugins: [.plugin(name: "skipstone", package: "skip")]),
         .target(name: "SkipRevenueUI", dependencies: [
             "SkipRevenue",
             .product(name: "SkipUI", package: "skip-ui"),
             .product(name: "RevenueCatUI", package: "purchases-ios", condition: .when(platforms: [.iOS, .macOS]))
         ], plugins: [.plugin(name: "skipstone", package: "skip")]),
-        .testTarget(name: "SkipRevenueTests", dependencies: [
-            "SkipRevenue",
+        .testTarget(name: "SkipRevenueUITests", dependencies: [
+            "SkipRevenueUI",
             .product(name: "SkipTest", package: "skip")
         ], resources: [.process("Resources")], plugins: [.plugin(name: "skipstone", package: "skip")]),
     ]
