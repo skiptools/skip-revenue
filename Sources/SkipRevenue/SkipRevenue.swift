@@ -285,20 +285,8 @@ public final class RCFuseStoreProduct: KotlinConverting<com.revenuecat.purchases
     }
 
     public var pricePerMonth: Double? {
-        guard let period = product.period else { return nil }
-        let totalPrice = price
-        switch period.unit {
-        case com.revenuecat.purchases.models.Period.Unit.YEAR:
-            return totalPrice / Double(period.value * 12)
-        case com.revenuecat.purchases.models.Period.Unit.MONTH:
-            return totalPrice / Double(period.value)
-        case com.revenuecat.purchases.models.Period.Unit.WEEK:
-            return totalPrice * (52.0 / 12.0) / Double(period.value)
-        case com.revenuecat.purchases.models.Period.Unit.DAY:
-            return totalPrice * (365.0 / 12.0) / Double(period.value)
-        default:
-            return nil
-        }
+        guard let monthlyPrice = product.pricePerMonth() else { return nil }
+        return Double(monthlyPrice.amountMicros) / 1_000_000.0
     }
 
     /// Returns the localized price per month string (e.g., "$4.99")
