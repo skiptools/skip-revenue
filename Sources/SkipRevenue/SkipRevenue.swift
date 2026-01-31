@@ -406,6 +406,14 @@ public final class RCFuseStoreProduct: @unchecked Sendable {
     public var priceFormatter: NumberFormatter? {
         return product.priceFormatter
     }
+
+    /// Returns the localized price per month string (e.g., "$4.99")
+    /// Uses the product's price formatter for proper locale formatting
+    public var localizedPricePerMonthString: String? {
+        guard let pricePerMonth = pricePerMonth,
+              let formatter = priceFormatter else { return nil }
+        return formatter.string(from: NSNumber(value: pricePerMonth))
+    }
 }
 #else
 public final class RCFuseStoreProduct: KotlinConverting<com.revenuecat.purchases.models.StoreProduct>, @unchecked Sendable {
@@ -476,6 +484,16 @@ public final class RCFuseStoreProduct: KotlinConverting<com.revenuecat.purchases
         default:
             return nil
         }
+    }
+
+    /// Returns the localized price per month string (e.g., "$4.99")
+    /// On Android, formats using the product's currency code
+    public var localizedPricePerMonthString: String? {
+        guard let monthlyPrice = pricePerMonth else { return nil }
+        // Use Android's NumberFormat with the product's currency
+        let formatter = java.text.NumberFormat.getCurrencyInstance()
+        formatter.currency = java.util.Currency.getInstance(product.price.currencyCode)
+        return formatter.format(monthlyPrice)
     }
 }
 #endif
