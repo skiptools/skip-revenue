@@ -21,6 +21,7 @@ import com.revenuecat.purchases.awaitLogIn
 import com.revenuecat.purchases.awaitLogOut
 import com.revenuecat.purchases.awaitPurchase
 import com.revenuecat.purchases.awaitRestore
+import com.revenuecat.purchases.models.Period
 #endif
 
 // MARK: - Wrapper Classes
@@ -236,6 +237,26 @@ public enum RCFusePackageType: String {
     case weekly
 }
 
+/// Subscription period unit enum
+public enum RCFuseSubscriptionPeriodUnit: Int, Sendable {
+    case day = 0
+    case week = 1
+    case month = 2
+    case year = 3
+    case unknown = 4
+}
+
+/// Wrapper for RevenueCat SubscriptionPeriod
+public struct RCFuseSubscriptionPeriod: Sendable {
+    public let unit: RCFuseSubscriptionPeriodUnit
+    public let value: Int
+
+    public init(unit: RCFuseSubscriptionPeriodUnit, value: Int) {
+        self.unit = unit
+        self.value = value
+    }
+}
+
 /// Wrapper for RevenueCat Package
 #if !SKIP
 public final class RCFusePackage: @unchecked Sendable {
@@ -271,6 +292,10 @@ public final class RCFusePackage: @unchecked Sendable {
     public var localizedPeriodString: String? {
         guard let period = package.storeProduct.subscriptionPeriod else { return nil }
         return "\(period.value) \(period.unit)"
+    }
+
+    public var localizedPriceString: String {
+        return storeProduct.localizedPriceString
     }
 }
 #else
@@ -311,6 +336,10 @@ public final class RCFusePackage: KotlinConverting<com.revenuecat.purchases.Pack
 
     public var localizedPeriodString: String? {
         return package.product.period?.let { "\($0)" }
+    }
+
+    public var localizedPriceString: String {
+        return storeProduct.localizedPriceString
     }
 }
 #endif
@@ -353,6 +382,30 @@ public final class RCFuseStoreProduct: @unchecked Sendable {
     public var localizedIntroductoryPriceString: String? {
         return product.introductoryDiscount?.localizedPriceString
     }
+
+    public var subscriptionPeriod: RCFuseSubscriptionPeriod? {
+        guard let period = product.subscriptionPeriod else { return nil }
+        let unit: RCFuseSubscriptionPeriodUnit
+        switch period.unit {
+        case .day: unit = .day
+        case .week: unit = .week
+        case .month: unit = .month
+        case .year: unit = .year
+        @unknown default: unit = .unknown
+        }
+        return RCFuseSubscriptionPeriod(unit: unit, value: period.value)
+    }
+
+    public var pricePerMonth: Double? {
+        guard let pricePerMonth = product.pricePerMonth else { return nil }
+        return Double(truncating: pricePerMonth as NSNumber)
+    }
+
+    /// Returns a NumberFormatter configured for the product's locale (iOS only)
+    /// On Android, use localizedPriceString or format prices manually
+    public var priceFormatter: NumberFormatter? {
+        return product.priceFormatter
+    }
 }
 #else
 public final class RCFuseStoreProduct: KotlinConverting<com.revenuecat.purchases.models.StoreProduct>, @unchecked Sendable {
@@ -393,6 +446,36 @@ public final class RCFuseStoreProduct: KotlinConverting<com.revenuecat.purchases
 
     public var localizedIntroductoryPriceString: String? {
         return nil // Intro price string not directly available on Android StoreProduct
+    }
+
+    public var subscriptionPeriod: RCFuseSubscriptionPeriod? {
+        guard let period = product.period else { return nil }
+        let unit: RCFuseSubscriptionPeriodUnit
+        switch period.unit {
+        case com.revenuecat.purchases.models.Period.Unit.DAY: unit = .day
+        case com.revenuecat.purchases.models.Period.Unit.WEEK: unit = .week
+        case com.revenuecat.purchases.models.Period.Unit.MONTH: unit = .month
+        case com.revenuecat.purchases.models.Period.Unit.YEAR: unit = .year
+        default: unit = .unknown
+        }
+        return RCFuseSubscriptionPeriod(unit: unit, value: period.value)
+    }
+
+    public var pricePerMonth: Double? {
+        guard let period = product.period else { return nil }
+        let totalPrice = price
+        switch period.unit {
+        case com.revenuecat.purchases.models.Period.Unit.YEAR:
+            return totalPrice / Double(period.value * 12)
+        case com.revenuecat.purchases.models.Period.Unit.MONTH:
+            return totalPrice / Double(period.value)
+        case com.revenuecat.purchases.models.Period.Unit.WEEK:
+            return totalPrice * (52.0 / 12.0) / Double(period.value)
+        case com.revenuecat.purchases.models.Period.Unit.DAY:
+            return totalPrice * (365.0 / 12.0) / Double(period.value)
+        default:
+            return nil
+        }
     }
 }
 #endif
