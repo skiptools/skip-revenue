@@ -18,6 +18,7 @@ import com.revenuecat.purchases.awaitLogIn
 import com.revenuecat.purchases.awaitLogOut
 import com.revenuecat.purchases.awaitPurchase
 import com.revenuecat.purchases.awaitRestore
+import com.revenuecat.purchases.models.Period
 #endif
 
 // MARK: - Wrapper Classes
@@ -124,6 +125,47 @@ public final class RCFuseOffering: KotlinConverting<com.revenuecat.purchases.Off
 }
 #endif
 
+/// Subscription period unit enum
+public enum RCFuseSubscriptionPeriodUnit: Int, Sendable {
+    case day = 0
+    case week = 1
+    case month = 2
+    case year = 3
+    case unknown = 4
+}
+
+/// Intro eligibility status enum
+public enum RCFuseIntroEligibilityStatus: Int, Sendable {
+    /// RevenueCat doesn't have enough information to determine eligibility
+    case unknown = 0
+    /// The user is not eligible for the intro offer
+    case ineligible = 1
+    /// The user is eligible for the intro offer
+    case eligible = 2
+    /// The user has an active subscription, no intro offer
+    case noIntroOfferExists = 3
+}
+
+/// Wrapper for intro eligibility result
+public struct RCFuseIntroEligibility: Sendable {
+    public let status: RCFuseIntroEligibilityStatus
+
+    public init(status: RCFuseIntroEligibilityStatus) {
+        self.status = status
+    }
+}
+
+/// Wrapper for RevenueCat SubscriptionPeriod
+public struct RCFuseSubscriptionPeriod: Sendable {
+    public let unit: RCFuseSubscriptionPeriodUnit
+    public let value: Int
+
+    public init(unit: RCFuseSubscriptionPeriodUnit, value: Int) {
+        self.unit = unit
+        self.value = value
+    }
+}
+
 /// Wrapper for RevenueCat Package
 #if !SKIP
 public final class RCFusePackage: @unchecked Sendable {
@@ -139,6 +181,10 @@ public final class RCFusePackage: @unchecked Sendable {
 
     public var storeProduct: RCFuseStoreProduct {
         return RCFuseStoreProduct(product: package.storeProduct)
+    }
+
+    public var localizedPriceString: String {
+        return storeProduct.localizedPriceString
     }
 }
 #else
@@ -160,6 +206,10 @@ public final class RCFusePackage: KotlinConverting<com.revenuecat.purchases.Pack
 
     public var storeProduct: RCFuseStoreProduct {
         return RCFuseStoreProduct(product: package.product)
+    }
+
+    public var localizedPriceString: String {
+        return storeProduct.localizedPriceString
     }
 }
 #endif
@@ -183,6 +233,38 @@ public final class RCFuseStoreProduct: @unchecked Sendable {
 
     public var price: Double {
         return Double(truncating: product.price as NSNumber)
+    }
+
+    public var subscriptionPeriod: RCFuseSubscriptionPeriod? {
+        guard let period = product.subscriptionPeriod else { return nil }
+        let unit: RCFuseSubscriptionPeriodUnit
+        switch period.unit {
+        case .day: unit = .day
+        case .week: unit = .week
+        case .month: unit = .month
+        case .year: unit = .year
+        @unknown default: unit = .unknown
+        }
+        return RCFuseSubscriptionPeriod(unit: unit, value: period.value)
+    }
+
+    public var pricePerMonth: Double? {
+        guard let pricePerMonth = product.pricePerMonth else { return nil }
+        return Double(truncating: pricePerMonth as NSNumber)
+    }
+
+    /// Returns a NumberFormatter configured for the product's locale (iOS only)
+    /// On Android, use localizedPriceString or format prices manually
+    public var priceFormatter: NumberFormatter? {
+        return product.priceFormatter
+    }
+
+    /// Returns the localized price per month string (e.g., "$4.99")
+    /// Uses the product's price formatter for proper locale formatting
+    public var localizedPricePerMonthString: String? {
+        guard let pricePerMonth = pricePerMonth,
+              let formatter = priceFormatter else { return nil }
+        return formatter.string(from: NSNumber(value: pricePerMonth))
     }
 }
 #else
@@ -208,6 +290,34 @@ public final class RCFuseStoreProduct: KotlinConverting<com.revenuecat.purchases
 
     public var price: Double {
         return Double(product.price.amountMicros) / 1_000_000.0
+    }
+
+    public var subscriptionPeriod: RCFuseSubscriptionPeriod? {
+        guard let period = product.period else { return nil }
+        let unit: RCFuseSubscriptionPeriodUnit
+        switch period.unit {
+        case com.revenuecat.purchases.models.Period.Unit.DAY: unit = .day
+        case com.revenuecat.purchases.models.Period.Unit.WEEK: unit = .week
+        case com.revenuecat.purchases.models.Period.Unit.MONTH: unit = .month
+        case com.revenuecat.purchases.models.Period.Unit.YEAR: unit = .year
+        default: unit = .unknown
+        }
+        return RCFuseSubscriptionPeriod(unit: unit, value: period.value)
+    }
+
+    public var pricePerMonth: Double? {
+        guard let monthlyPrice = product.pricePerMonth() else { return nil }
+        return Double(monthlyPrice.amountMicros) / 1_000_000.0
+    }
+
+    /// Returns the localized price per month string (e.g., "$4.99")
+    /// On Android, formats using the product's currency code
+    public var localizedPricePerMonthString: String? {
+        guard let monthlyPrice = pricePerMonth else { return nil }
+        // Use Android's NumberFormat with the product's currency
+        let formatter = java.text.NumberFormat.getCurrencyInstance()
+        formatter.currency = java.util.Currency.getInstance(product.price.currencyCode)
+        return formatter.format(monthlyPrice)
     }
 }
 #endif
@@ -399,6 +509,51 @@ public struct RevenueCatFuse: @unchecked Sendable {
         #else
         let customerInfo = Purchases.sharedInstance.awaitCustomerInfo()
         return RCFuseCustomerInfo(customerInfo: customerInfo)
+        #endif
+    }
+
+    /// Check trial or intro discount eligibility for products
+    /// Returns a dictionary mapping product identifiers to their eligibility status
+    ///
+    /// iOS: Uses native RevenueCat API
+    /// Android: Checks if user has ever had any entitlement (if so, not eligible for intro)
+    public func checkTrialOrIntroEligibility(productIdentifiers: [String]) async throws -> [String: RCFuseIntroEligibility] {
+        #if !SKIP
+        let eligibility = await Purchases.shared.checkTrialOrIntroDiscountEligibility(productIdentifiers: productIdentifiers)
+        var result: [String: RCFuseIntroEligibility] = [:]
+        for (productId, intro) in eligibility {
+            let status: RCFuseIntroEligibilityStatus
+            switch intro.status {
+            case .unknown:
+                status = .unknown
+            case .ineligible:
+                status = .ineligible
+            case .eligible:
+                status = .eligible
+            case .noIntroOfferExists:
+                status = .noIntroOfferExists
+            @unknown default:
+                status = .unknown
+            }
+            result[productId] = RCFuseIntroEligibility(status: status)
+        }
+        return result
+        #else
+        // On Android, Google Play handles eligibility automatically.
+        // If an offer appears in offerings, the user is eligible for it.
+        // However, to provide equivalent behavior to iOS, we check if the user
+        // has ever had any entitlement - if they have, they're not eligible for intro offers.
+        let customerInfo = Purchases.sharedInstance.awaitCustomerInfo()
+        let hasAnyEntitlementHistory = customerInfo.entitlements.all.size > 0
+
+        var result: [String: RCFuseIntroEligibility] = [:]
+        for productId in productIdentifiers {
+            // If user has any entitlement history, they're not eligible for intro offers
+            // Otherwise, they are eligible (assuming the offer exists in offerings)
+            let status: RCFuseIntroEligibilityStatus = hasAnyEntitlementHistory ? .ineligible : .eligible
+            result[productId] = RCFuseIntroEligibility(status: status)
+        }
+        return result
         #endif
     }
 }
