@@ -246,6 +246,27 @@ public enum RCFuseSubscriptionPeriodUnit: Int, Sendable {
     case unknown = 4
 }
 
+/// Intro eligibility status enum
+public enum RCFuseIntroEligibilityStatus: Int, Sendable {
+    /// RevenueCat doesn't have enough information to determine eligibility
+    case unknown = 0
+    /// The user is not eligible for the intro offer
+    case ineligible = 1
+    /// The user is eligible for the intro offer
+    case eligible = 2
+    /// The user has an active subscription, no intro offer
+    case noIntroOfferExists = 3
+}
+
+/// Wrapper for intro eligibility result
+public struct RCFuseIntroEligibility: Sendable {
+    public let status: RCFuseIntroEligibilityStatus
+
+    public init(status: RCFuseIntroEligibilityStatus) {
+        self.status = status
+    }
+}
+
 /// Wrapper for RevenueCat SubscriptionPeriod
 public struct RCFuseSubscriptionPeriod: Sendable {
     public let unit: RCFuseSubscriptionPeriodUnit
@@ -816,6 +837,51 @@ public struct RevenueCatFuse: @unchecked Sendable {
         Purchases.shared.setDisplayName(displayName)
         #else
         Purchases.sharedInstance.setDisplayName(displayName)
+        #endif
+    }
+
+    /// Check trial or intro discount eligibility for products
+    /// Returns a dictionary mapping product identifiers to their eligibility status
+    ///
+    /// iOS: Uses native RevenueCat API
+    /// Android: Checks if user has ever had any entitlement (if so, not eligible for intro)
+    public func checkTrialOrIntroEligibility(productIdentifiers: [String]) async throws -> [String: RCFuseIntroEligibility] {
+        #if !SKIP
+        let eligibility = await Purchases.shared.checkTrialOrIntroDiscountEligibility(productIdentifiers: productIdentifiers)
+        var result: [String: RCFuseIntroEligibility] = [:]
+        for (productId, intro) in eligibility {
+            let status: RCFuseIntroEligibilityStatus
+            switch intro.status {
+            case .unknown:
+                status = .unknown
+            case .ineligible:
+                status = .ineligible
+            case .eligible:
+                status = .eligible
+            case .noIntroOfferExists:
+                status = .noIntroOfferExists
+            @unknown default:
+                status = .unknown
+            }
+            result[productId] = RCFuseIntroEligibility(status: status)
+        }
+        return result
+        #else
+        // On Android, Google Play handles eligibility automatically.
+        // If an offer appears in offerings, the user is eligible for it.
+        // However, to provide equivalent behavior to iOS, we check if the user
+        // has ever had any entitlement - if they have, they're not eligible for intro offers.
+        let customerInfo = Purchases.sharedInstance.awaitCustomerInfo()
+        let hasAnyEntitlementHistory = customerInfo.entitlements.all.size > 0
+
+        var result: [String: RCFuseIntroEligibility] = [:]
+        for productId in productIdentifiers {
+            // If user has any entitlement history, they're not eligible for intro offers
+            // Otherwise, they are eligible (assuming the offer exists in offerings)
+            let status: RCFuseIntroEligibilityStatus = hasAnyEntitlementHistory ? .ineligible : .eligible
+            result[productId] = RCFuseIntroEligibility(status: status)
+        }
+        return result
         #endif
     }
 }
