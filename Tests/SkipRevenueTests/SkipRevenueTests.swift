@@ -1,4 +1,4 @@
-// Licensed under the GNU General Public License v3.0 with Linking Exception
+// Copyright 2023–2026 Skip
 // SPDX-License-Identifier: LGPL-3.0-only WITH LGPL-3.0-linking-exception
 
 import XCTest
