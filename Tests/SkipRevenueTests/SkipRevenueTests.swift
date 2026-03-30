@@ -17,12 +17,40 @@ final class SkipRevenueTests: XCTestCase {
     }
 
     func testDecodeType() throws {
-        // load the TestData.json file from the Resources folder and decode it into a struct
         let resourceURL: URL = try XCTUnwrap(Bundle.module.url(forResource: "TestData", withExtension: "json"))
         let testData = try JSONDecoder().decode(TestData.self, from: Data(contentsOf: resourceURL))
         XCTAssertEqual("SkipRevenue", testData.testModuleName)
     }
 
+    func testStoreErrorCases() throws {
+        let errors: [StoreError] = [
+            .userCancelled,
+            .unknown,
+            .noPurchasesFound,
+            .noProductsAvailable,
+            .packageNotFound,
+            .notConfigured,
+        ]
+        XCTAssertEqual(errors.count, 6)
+        for err in errors {
+            XCTAssertFalse("\(err)".isEmpty)
+        }
+    }
+
+    func testPackageType() throws {
+        let types: [RCFusePackageType] = [
+            .unknown, .custom, .lifetime, .annual,
+            .sixMonth, .threeMonth, .twoMonth, .monthly, .weekly
+        ]
+        XCTAssertEqual(types.count, 9)
+        XCTAssertEqual(RCFusePackageType.annual.rawValue, "annual")
+        XCTAssertEqual(RCFusePackageType.monthly.rawValue, "monthly")
+    }
+
+    func testRevenueCatFuseSingleton() throws {
+        let service = RevenueCatFuse.shared
+        XCTAssertNotNil(service)
+    }
 }
 
 struct TestData : Codable, Hashable {
