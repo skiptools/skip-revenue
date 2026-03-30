@@ -100,8 +100,60 @@ public final class RCFuseOffering: @unchecked Sendable {
         return offering.identifier
     }
 
+    public var serverDescription: String {
+        return offering.serverDescription
+    }
+
     public var availablePackages: [RCFusePackage] {
         return offering.availablePackages.map { RCFusePackage(package: $0) }
+    }
+
+    /// The lifetime package in this offering, if available.
+    public var lifetime: RCFusePackage? {
+        guard let pkg = offering.lifetime else { return nil }
+        return RCFusePackage(package: pkg)
+    }
+
+    /// The annual package in this offering, if available.
+    public var annual: RCFusePackage? {
+        guard let pkg = offering.annual else { return nil }
+        return RCFusePackage(package: pkg)
+    }
+
+    /// The six-month package in this offering, if available.
+    public var sixMonth: RCFusePackage? {
+        guard let pkg = offering.sixMonth else { return nil }
+        return RCFusePackage(package: pkg)
+    }
+
+    /// The three-month package in this offering, if available.
+    public var threeMonth: RCFusePackage? {
+        guard let pkg = offering.threeMonth else { return nil }
+        return RCFusePackage(package: pkg)
+    }
+
+    /// The two-month package in this offering, if available.
+    public var twoMonth: RCFusePackage? {
+        guard let pkg = offering.twoMonth else { return nil }
+        return RCFusePackage(package: pkg)
+    }
+
+    /// The monthly package in this offering, if available.
+    public var monthly: RCFusePackage? {
+        guard let pkg = offering.monthly else { return nil }
+        return RCFusePackage(package: pkg)
+    }
+
+    /// The weekly package in this offering, if available.
+    public var weekly: RCFusePackage? {
+        guard let pkg = offering.weekly else { return nil }
+        return RCFusePackage(package: pkg)
+    }
+
+    /// Returns the package with the given identifier, or `nil`.
+    public func package(identifier: String) -> RCFusePackage? {
+        guard let pkg = offering.package(identifier: identifier) else { return nil }
+        return RCFusePackage(package: pkg)
     }
 }
 #else
@@ -121,11 +173,68 @@ public final class RCFuseOffering: KotlinConverting<com.revenuecat.purchases.Off
         return offering.identifier
     }
 
+    public var serverDescription: String {
+        return offering.serverDescription
+    }
+
     public var availablePackages: [RCFusePackage] {
         return Array(offering.availablePackages.map { RCFusePackage(package: $0) })
     }
+
+    public var lifetime: RCFusePackage? {
+        guard let pkg = offering.lifetime else { return nil }
+        return RCFusePackage(package: pkg)
+    }
+
+    public var annual: RCFusePackage? {
+        guard let pkg = offering.annual else { return nil }
+        return RCFusePackage(package: pkg)
+    }
+
+    public var sixMonth: RCFusePackage? {
+        guard let pkg = offering.sixMonth else { return nil }
+        return RCFusePackage(package: pkg)
+    }
+
+    public var threeMonth: RCFusePackage? {
+        guard let pkg = offering.threeMonth else { return nil }
+        return RCFusePackage(package: pkg)
+    }
+
+    public var twoMonth: RCFusePackage? {
+        guard let pkg = offering.twoMonth else { return nil }
+        return RCFusePackage(package: pkg)
+    }
+
+    public var monthly: RCFusePackage? {
+        guard let pkg = offering.monthly else { return nil }
+        return RCFusePackage(package: pkg)
+    }
+
+    public var weekly: RCFusePackage? {
+        guard let pkg = offering.weekly else { return nil }
+        return RCFusePackage(package: pkg)
+    }
+
+    public func package(identifier: String) -> RCFusePackage? {
+        guard let pkg = offering.getPackage(identifier) else { return nil }
+        return RCFusePackage(package: pkg)
+    }
 }
 #endif
+
+/// The type of a RevenueCat package.
+public enum RCFusePackageType: String {
+    case unknown
+    case custom
+    case lifetime
+    case annual
+    case sixMonth
+    case threeMonth
+    case twoMonth
+    case monthly
+    case weekly
+}
 
 /// Wrapper for RevenueCat Package
 #if !SKIP
@@ -140,8 +249,28 @@ public final class RCFusePackage: @unchecked Sendable {
         return package.identifier
     }
 
+    public var packageType: RCFusePackageType {
+        switch package.packageType {
+        case .lifetime: return .lifetime
+        case .annual: return .annual
+        case .sixMonth: return .sixMonth
+        case .threeMonth: return .threeMonth
+        case .twoMonth: return .twoMonth
+        case .monthly: return .monthly
+        case .weekly: return .weekly
+        case .custom: return .custom
+        case .unknown: return .unknown
+        }
+    }
+
     public var storeProduct: RCFuseStoreProduct {
         return RCFuseStoreProduct(product: package.storeProduct)
+    }
+
+    /// A localized string describing the package duration (e.g., "1 month", "1 year").
+    public var localizedPeriodString: String? {
+        guard let period = package.storeProduct.subscriptionPeriod else { return nil }
+        return "\(period.value) \(period.unit)"
     }
 }
 #else
@@ -161,8 +290,27 @@ public final class RCFusePackage: KotlinConverting<com.revenuecat.purchases.Pack
         return package.identifier
     }
 
+    public var packageType: RCFusePackageType {
+        let name = "\(package.packageType)"
+        switch name {
+        case "LIFETIME": return .lifetime
+        case "ANNUAL": return .annual
+        case "SIX_MONTH": return .sixMonth
+        case "THREE_MONTH": return .threeMonth
+        case "TWO_MONTH": return .twoMonth
+        case "MONTHLY": return .monthly
+        case "WEEKLY": return .weekly
+        case "CUSTOM": return .custom
+        default: return .unknown
+        }
+    }
+
     public var storeProduct: RCFuseStoreProduct {
         return RCFuseStoreProduct(product: package.product)
+    }
+
+    public var localizedPeriodString: String? {
+        return package.product.period?.let { "\($0)" }
     }
 }
 #endif
@@ -180,12 +328,30 @@ public final class RCFuseStoreProduct: @unchecked Sendable {
         return product.productIdentifier
     }
 
+    public var localizedTitle: String {
+        return product.localizedTitle
+    }
+
+    public var localizedDescription: String {
+        return product.localizedDescription
+    }
+
     public var localizedPriceString: String {
         return product.localizedPriceString
     }
 
     public var price: Double {
         return Double(truncating: product.price as NSNumber)
+    }
+
+    /// The currency code for this product's price (e.g., "USD", "EUR").
+    public var currencyCode: String? {
+        return product.currencyCode
+    }
+
+    /// The localized introductory price string, if an intro offer is available.
+    public var localizedIntroductoryPriceString: String? {
+        return product.introductoryDiscount?.localizedPriceString
     }
 }
 #else
@@ -205,12 +371,28 @@ public final class RCFuseStoreProduct: KotlinConverting<com.revenuecat.purchases
         return product.id
     }
 
+    public var localizedTitle: String {
+        return product.title
+    }
+
+    public var localizedDescription: String {
+        return product.description
+    }
+
     public var localizedPriceString: String {
         return product.price.formatted
     }
 
     public var price: Double {
         return Double(product.price.amountMicros) / 1_000_000.0
+    }
+
+    public var currencyCode: String? {
+        return product.price.currencyCode
+    }
+
+    public var localizedIntroductoryPriceString: String? {
+        return nil // Intro price string not directly available on Android StoreProduct
     }
 }
 #endif
@@ -237,6 +419,36 @@ public final class RCFuseCustomerInfo: @unchecked Sendable {
     public var allPurchasedProductIdentifiers: Set<String> {
         return customerInfo.allPurchasedProductIdentifiers
     }
+
+    /// The date this user was first seen by RevenueCat.
+    public var firstSeen: Date {
+        return customerInfo.firstSeen
+    }
+
+    /// The latest expiration date of any active entitlement, if any.
+    public var latestExpirationDate: Date? {
+        return customerInfo.latestExpirationDate
+    }
+
+    /// Returns the expiration date for the given entitlement identifier, or `nil`.
+    public func expirationDate(forEntitlement identifier: String) -> Date? {
+        return customerInfo.expirationDate(forEntitlement: identifier)
+    }
+
+    /// Returns the purchase date for the given entitlement identifier, or `nil`.
+    public func purchaseDate(forEntitlement identifier: String) -> Date? {
+        return customerInfo.purchaseDate(forEntitlement: identifier)
+    }
+
+    /// Whether the user has any active entitlements.
+    public var hasActiveEntitlements: Bool {
+        return !activeEntitlements.isEmpty
+    }
+
+    /// Checks whether the user has an active entitlement with the given identifier.
+    public func isEntitlementActive(_ identifier: String) -> Bool {
+        return customerInfo.entitlements[identifier]?.isActive == true
+    }
 }
 #else
 public final class RCFuseCustomerInfo: KotlinConverting<com.revenuecat.purchases.CustomerInfo>, @unchecked Sendable {
@@ -262,18 +474,49 @@ public final class RCFuseCustomerInfo: KotlinConverting<com.revenuecat.purchases
     public var allPurchasedProductIdentifiers: Set<String> {
         return Set(customerInfo.allPurchasedProductIds)
     }
+
+    public var firstSeen: Date {
+        return Date(platformValue: customerInfo.firstSeen)
+    }
+
+    public var latestExpirationDate: Date? {
+        guard let d = customerInfo.latestExpirationDate else { return nil }
+        return Date(platformValue: d)
+    }
+
+    public func expirationDate(forEntitlement identifier: String) -> Date? {
+        guard let d = customerInfo.getExpirationDateForEntitlement(identifier) else { return nil }
+        return Date(platformValue: d)
+    }
+
+    public func purchaseDate(forEntitlement identifier: String) -> Date? {
+        guard let d = customerInfo.getPurchaseDateForEntitlement(identifier) else { return nil }
+        return Date(platformValue: d)
+    }
+
+    public var hasActiveEntitlements: Bool {
+        return !customerInfo.entitlements.active.isEmpty()
+    }
+
+    public func isEntitlementActive(_ identifier: String) -> Bool {
+        return customerInfo.entitlements.active.containsKey(identifier)
+    }
 }
 #endif
 
 // MARK: - RevenueCat Service
 
-/// RevenueCat service for purchases and subscriptions
-/// Returns wrapper objects for cross-platform compatibility
+/// RevenueCat service for purchases and subscriptions.
+/// Returns wrapper objects for cross-platform compatibility.
 public struct RevenueCatFuse: @unchecked Sendable {
     public static let shared = RevenueCatFuse()
 
     private init() {}
 
+    /// Configure the RevenueCat SDK with the given API key.
+    ///
+    /// Call this early in your app's lifecycle, typically in your `App` init.
+    /// Use the platform-specific API key from your RevenueCat dashboard.
     public func configure(apiKey: String) {
         #if !SKIP
         Purchases.logLevel = .debug
@@ -287,6 +530,26 @@ public struct RevenueCatFuse: @unchecked Sendable {
         #endif
     }
 
+    /// Configure the RevenueCat SDK with an API key and an app user ID.
+    ///
+    /// Use this when you want to identify the user at configuration time.
+    public func configure(apiKey: String, appUserID: String) {
+        #if !SKIP
+        Purchases.logLevel = .debug
+        Purchases.configure(withAPIKey: apiKey, appUserID: appUserID)
+        #else
+        Purchases.debugLogsEnabled = true
+        let context = ProcessInfo.processInfo.androidContext
+        let builder = PurchasesConfiguration.Builder(context, apiKey).appUserID(appUserID)
+        let config = builder.build()
+        Purchases.configure(config)
+        #endif
+    }
+
+    /// Log in a user with the given user ID.
+    ///
+    /// If the user ID is different from the current one, the SDK will create a new user
+    /// or switch to an existing one, transferring purchases as needed.
     public func loginUser(userId: String) async throws {
         #if !SKIP
         let _ = try await Purchases.shared.logIn(userId)
@@ -295,6 +558,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
         #endif
     }
 
+    /// Log out the current user, reverting to an anonymous ID.
     public func logoutUser() async throws {
         #if !SKIP
         let _ = try await Purchases.shared.logOut()
@@ -303,8 +567,35 @@ public struct RevenueCatFuse: @unchecked Sendable {
         #endif
     }
 
-    /// Load all offerings from RevenueCat
-    /// Returns wrapped Offerings object with full data
+    /// Whether the SDK is configured and ready to use.
+    public var isConfigured: Bool {
+        #if !SKIP
+        return Purchases.isConfigured
+        #else
+        return Purchases.isConfigured
+        #endif
+    }
+
+    /// The current app user ID, whether anonymous or identified.
+    public var appUserID: String {
+        #if !SKIP
+        return Purchases.shared.appUserID
+        #else
+        return Purchases.sharedInstance.appUserID
+        #endif
+    }
+
+    /// Whether the current user is anonymous.
+    public var isAnonymous: Bool {
+        #if !SKIP
+        return Purchases.shared.isAnonymous
+        #else
+        return Purchases.sharedInstance.isAnonymous
+        #endif
+    }
+
+    /// Load all offerings from RevenueCat.
+    /// Returns wrapped Offerings object with full data.
     public func loadOfferings() async throws -> RCFuseOfferings {
         #if !SKIP
         let offerings = try await Purchases.shared.offerings()
@@ -315,8 +606,8 @@ public struct RevenueCatFuse: @unchecked Sendable {
         #endif
     }
 
-    /// Load packages from a specific offering
-    /// Returns wrapped Package objects with full data
+    /// Load packages from a specific offering.
+    /// Returns wrapped Package objects with full data.
     public func loadProducts(offeringIdentifier: String? = nil) async throws -> [RCFusePackage] {
         #if !SKIP
         let offerings = try await Purchases.shared.offerings()
@@ -348,7 +639,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
     }
 
     #if !SKIP
-    /// Purchase a package (iOS)
+    /// Purchase a package (iOS).
     public func purchase(package: RCFusePackage) async throws -> RCFuseCustomerInfo {
         let (_, customerInfo, userCancelled) = try await Purchases.shared.purchase(package: package.package)
 
@@ -359,7 +650,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
         return RCFuseCustomerInfo(customerInfo: customerInfo)
     }
     #else
-    /// Purchase a package (Android) - requires Activity
+    /// Purchase a package (Android) — requires Activity.
     public func purchase(package: RCFusePackage, activity: Any) async throws -> RCFuseCustomerInfo {
         guard let androidActivity = activity as? android.app.Activity else {
             throw StoreError.unknown
@@ -381,8 +672,8 @@ public struct RevenueCatFuse: @unchecked Sendable {
     }
     #endif
 
-    /// Restore purchases
-    /// Returns wrapped CustomerInfo object
+    /// Restore purchases.
+    /// Returns wrapped CustomerInfo object.
     public func restorePurchases() async throws -> RCFuseCustomerInfo {
         #if !SKIP
         let customerInfo = try await Purchases.shared.restorePurchases()
@@ -393,8 +684,8 @@ public struct RevenueCatFuse: @unchecked Sendable {
         #endif
     }
 
-    /// Get current customer info
-    /// Returns wrapped CustomerInfo object
+    /// Get current customer info.
+    /// Returns wrapped CustomerInfo object.
     public func getCustomerInfo() async throws -> RCFuseCustomerInfo {
         #if !SKIP
         let customerInfo = try await Purchases.shared.customerInfo()
@@ -402,6 +693,40 @@ public struct RevenueCatFuse: @unchecked Sendable {
         #else
         let customerInfo = Purchases.sharedInstance.awaitCustomerInfo()
         return RCFuseCustomerInfo(customerInfo: customerInfo)
+        #endif
+    }
+
+    /// Set subscriber attributes for the current user.
+    ///
+    /// These are key-value pairs that are synced to RevenueCat and can be used for
+    /// analytics, integrations, and customer segmentation.
+    public func setAttributes(_ attributes: [String: String]) {
+        #if !SKIP
+        Purchases.shared.setAttributes(attributes)
+        #else
+        var nullableMap: MutableMap<String, String?> = mutableMapOf()
+        for (key, value) in attributes {
+            nullableMap[key] = value
+        }
+        // SKIP INSERT: com.revenuecat.purchases.Purchases.sharedInstance.setAttributes(nullableMap as Map<String, String?>)
+        #endif
+    }
+
+    /// Set the user's email address.
+    public func setEmail(_ email: String) {
+        #if !SKIP
+        Purchases.shared.setEmail(email)
+        #else
+        Purchases.sharedInstance.setEmail(email)
+        #endif
+    }
+
+    /// Set the user's display name.
+    public func setDisplayName(_ displayName: String) {
+        #if !SKIP
+        Purchases.shared.setDisplayName(displayName)
+        #else
+        Purchases.sharedInstance.setDisplayName(displayName)
         #endif
     }
 }
@@ -414,6 +739,7 @@ public enum StoreError: Error {
     case noPurchasesFound
     case noProductsAvailable
     case packageNotFound
+    case notConfigured
 }
 
 extension StoreError: LocalizedError {
@@ -424,6 +750,7 @@ extension StoreError: LocalizedError {
         case .noPurchasesFound: return "No purchases found"
         case .noProductsAvailable: return "No products available"
         case .packageNotFound: return "Package not found"
+        case .notConfigured: return "RevenueCat is not configured"
         }
     }
 }
