@@ -210,7 +210,7 @@ let customerInfo = try await RevenueCatFuse.shared.purchase(package: package)
 // Android — pass the current activity
 let customerInfo = try await RevenueCatFuse.shared.purchase(
     package: package,
-    activity: ProcessInfo.processInfo.androidContext
+    activity: UIApplication.shared.androidActivity
 )
 #endif
 ```
@@ -224,7 +224,7 @@ do {
     #else
     let customerInfo = try await RevenueCatFuse.shared.purchase(
         package: package,
-        activity: ProcessInfo.processInfo.androidContext
+        activity: UIApplication.shared.androidActivity
     )
     #endif
     // Purchase succeeded — check entitlements
