@@ -1,15 +1,18 @@
 // Copyright 2023–2026 Skip
 // SPDX-License-Identifier: MPL-2.0
 
-// Foundation is safe in the bridge pass (the bridge generator emits
-// extensions/`@_cdecl` thunks that need Date/LocalizedError/etc.).
+// File structure mirrors `skip-firebase` (Firestore, Functions, …): the
+// entire implementation lives inside `#if !SKIP_BRIDGE`. The bridge
+// generator runs the same sources with `-DSKIP_BRIDGE` and emits its own
+// self-contained `BridgedFromKotlin` Swift classes in
+// `SkipRevenue_Bridge.swift`; those JNI-forward into the Kotlin
+// transpilation. Native-Swift-on-Android callers link against the
+// auto-generated bridge class, NOT the impl in this file — which is why
+// the previous "hide impl + leave stubs visible" pattern crashed
+// (the stubs were the only thing native-Swift saw).
+#if !SKIP_BRIDGE
 import Foundation
 
-// The platform RevenueCat SDKs are only imported on the impl pass.
-// Their types are not visible when the bridge generator runs the same
-// sources with `-DSKIP_BRIDGE`, so anything that references them must
-// live inside `#if !SKIP_BRIDGE`.
-#if !SKIP_BRIDGE
 #if !SKIP
 import RevenueCat
 #else
@@ -32,14 +35,8 @@ import com.revenuecat.purchases.awaitRestore
 import com.revenuecat.purchases.awaitSyncPurchases
 import com.revenuecat.purchases.models.Period
 #endif
-#endif
 
 // MARK: - Value types
-//
-// These are pure-Swift value types with no platform-SDK dependency in their
-// declarations. They live outside `#if !SKIP_BRIDGE` so the generated
-// `extension X: BridgedToKotlin` declarations in `SkipRevenue_Bridge.swift`
-// can resolve the type during the bridge pass.
 
 /// The type of a RevenueCat package. Mirrors iOS `RevenueCat.PackageType`.
 public enum RCFusePackageType: String {
@@ -164,15 +161,7 @@ extension StoreError: LocalizedError {
     }
 }
 
-// MARK: - Wrapper classes (impl pass only)
-//
-// These classes wrap the platform RevenueCat type (`RevenueCat.Offerings`,
-// `com.revenuecat.purchases.Offerings`, …) and so their declarations cannot
-// compile under `-DSKIP_BRIDGE`. The bridge generator emits its own
-// self-contained `BridgedFromKotlin` redeclarations for them in
-// `SkipRevenue_Bridge.swift`, so leaving them out of the bridge pass is fine.
-
-#if !SKIP_BRIDGE
+// MARK: - Wrapper classes
 
 /// Wrapper for RevenueCat `Offerings`.
 #if !SKIP
@@ -924,17 +913,20 @@ public final class RCFuseEntitlementInfo: KotlinConverting<com.revenuecat.purcha
 }
 #endif
 
-#endif // !SKIP_BRIDGE — wrapper class block
-
 // MARK: - RevenueCat service
 //
-// `RevenueCatFuse` lives outside `#if !SKIP_BRIDGE` so the generated
-// `extension RevenueCatFuse: BridgedToKotlin` and the `@_cdecl` thunks
-// in `SkipRevenue_Bridge.swift` can resolve its declaration and method
-// signatures during the bridge pass. Method *bodies* call into the
-// platform RevenueCat SDK and so are guarded by `#if !SKIP_BRIDGE`
-// (with a `fatalError` stub for the bridge pass; the bridge pass never
-// runs them — it only needs to compile them).
+// Service facade that proxies to `Purchases.shared` (iOS) / `Purchases.sharedInstance`
+// (Android). Mirrors iOS `RevenueCat.Purchases` static methods. Stateless — the
+// underlying SDK owns its singleton; `RevenueCatFuse.shared` is just a struct
+// handle so call-sites read `RevenueCatFuse.shared.X()` for iOS-parity feel.
+//
+// NOTE: this type intentionally does NOT extend `KotlinConverting<Purchases>`.
+// `Purchases.sharedInstance` only exists *after* `configure()` is called, and
+// `configure()` itself is reached via `RevenueCatFuse.shared.configure(...)` —
+// holding a Kotlin reference at `shared`-construction time would be a chicken-
+// and-egg. Wrapping a SDK reference is appropriate for the wrapper *types*
+// above (Offerings/Package/CustomerInfo) which are constructed from already-
+// returned SDK objects, but not for the service entry point.
 
 /// Service wrapper for RevenueCat. Returns wrapper objects for cross-platform
 /// compatibility. Mirrors iOS `RevenueCat.Purchases` static methods.
@@ -948,7 +940,6 @@ public struct RevenueCatFuse: @unchecked Sendable {
     /// Call this early in your app's lifecycle, typically in your `App` init.
     /// Use the platform-specific API key from your RevenueCat dashboard.
     public func configure(apiKey: String) {
-        #if !SKIP_BRIDGE
         #if !SKIP
         Purchases.logLevel = .debug
         Purchases.configure(withAPIKey: apiKey)
@@ -959,12 +950,10 @@ public struct RevenueCatFuse: @unchecked Sendable {
         let config = builder.build()
         Purchases.configure(config)
         #endif
-        #endif
     }
 
     /// Configure the RevenueCat SDK with an API key and an app user ID.
     public func configure(apiKey: String, appUserID: String) {
-        #if !SKIP_BRIDGE
         #if !SKIP
         Purchases.logLevel = .debug
         Purchases.configure(withAPIKey: apiKey, appUserID: appUserID)
@@ -975,73 +964,55 @@ public struct RevenueCatFuse: @unchecked Sendable {
         let config = builder.build()
         Purchases.configure(config)
         #endif
-        #endif
     }
 
     /// Log in a user with the given user ID. Mirrors iOS `Purchases.logIn(_:)`.
     public func loginUser(userId: String) async throws {
-        #if !SKIP_BRIDGE
         #if !SKIP
         let _ = try await Purchases.shared.logIn(userId)
         #else
         let _ = Purchases.sharedInstance.awaitLogIn(userId)
         #endif
-        #endif
     }
 
     /// Log out the current user, reverting to an anonymous ID. Mirrors iOS `Purchases.logOut()`.
     public func logoutUser() async throws {
-        #if !SKIP_BRIDGE
         #if !SKIP
         let _ = try await Purchases.shared.logOut()
         #else
         let _ = Purchases.sharedInstance.awaitLogOut()
         #endif
-        #endif
     }
 
     /// Whether the SDK is configured and ready to use.
     public var isConfigured: Bool {
-        #if !SKIP_BRIDGE
         #if !SKIP
         return Purchases.isConfigured
         #else
         return Purchases.isConfigured
-        #endif
-        #else
-        return false
         #endif
     }
 
     /// The current app user ID, whether anonymous or identified.
     public var appUserID: String {
-        #if !SKIP_BRIDGE
         #if !SKIP
         return Purchases.shared.appUserID
         #else
         return Purchases.sharedInstance.appUserID
         #endif
-        #else
-        return ""
-        #endif
     }
 
     /// Whether the current user is anonymous.
     public var isAnonymous: Bool {
-        #if !SKIP_BRIDGE
         #if !SKIP
         return Purchases.shared.isAnonymous
         #else
         return Purchases.sharedInstance.isAnonymous
         #endif
-        #else
-        return true
-        #endif
     }
 
     /// Load all offerings from RevenueCat. Mirrors iOS `Purchases.offerings()`.
     public func loadOfferings() async throws -> RCFuseOfferings {
-        #if !SKIP_BRIDGE
         #if !SKIP
         let offerings = try await Purchases.shared.offerings()
         return RCFuseOfferings(offerings: offerings)
@@ -1049,14 +1020,10 @@ public struct RevenueCatFuse: @unchecked Sendable {
         let offerings = Purchases.sharedInstance.awaitOfferings()
         return RCFuseOfferings(offerings: offerings)
         #endif
-        #else
-        throw StoreError.notConfigured
-        #endif
     }
 
     /// Load packages from a specific offering.
     public func loadProducts(offeringIdentifier: String? = nil) async throws -> [RCFusePackage] {
-        #if !SKIP_BRIDGE
         #if !SKIP
         let offerings = try await Purchases.shared.offerings()
         let offering = offeringIdentifier != nil ? offerings.offering(identifier: offeringIdentifier!) : offerings.current
@@ -1084,22 +1051,18 @@ public struct RevenueCatFuse: @unchecked Sendable {
 
         return Array(packages.map { RCFusePackage(package: $0) })
         #endif
-        #else
-        throw StoreError.notConfigured
-        #endif
     }
 
     // `purchase` has divergent platform signatures (iOS doesn't need an
-    // Activity; Android does). The bridge generator runs with `SKIP` defined
-    // and emits a thunk that calls `purchase(package:activity:)` — but the
-    // bridge *pass* compiles with `SKIP_BRIDGE` but **not** `SKIP`, so we'd
-    // otherwise only see the iOS signature. Each guard explicitly includes
-    // `SKIP_BRIDGE` so both overloads are visible in the bridge pass.
+    // Activity; Android does). Both signatures are emitted by their respective
+    // `#if` branch — the bridge generator only sees the Skip-side body (because
+    // the entire file is inside `#if !SKIP_BRIDGE`) and emits a JNI-forwarding
+    // bridge for `purchase(package:activity:)`; the iOS overload only matters
+    // for iOS callers.
 
-    #if !SKIP || SKIP_BRIDGE
+    #if !SKIP
     /// Purchase a package (iOS). Mirrors iOS `Purchases.purchase(package:)`.
     public func purchase(package: RCFusePackage) async throws -> RCFuseCustomerInfo {
-        #if !SKIP_BRIDGE
         let (_, customerInfo, userCancelled) = try await Purchases.shared.purchase(package: package.package)
 
         if userCancelled {
@@ -1107,18 +1070,12 @@ public struct RevenueCatFuse: @unchecked Sendable {
         }
 
         return RCFuseCustomerInfo(customerInfo: customerInfo)
-        #else
-        throw StoreError.notConfigured
-        #endif
     }
-    #endif
-
-    #if SKIP || SKIP_BRIDGE
+    #else
     /// Purchase a package (Android) — requires the host `Activity`, wrapped in
     /// `RCFuseAndroidActivity` so the bridge thunk can capture it across a
     /// `Task { ... }` boundary under Swift 6 strict concurrency.
     public func purchase(package: RCFusePackage, activity: RCFuseAndroidActivity) async throws -> RCFuseCustomerInfo {
-        #if !SKIP_BRIDGE
         guard let androidActivity = activity.activity as? android.app.Activity else {
             throw StoreError.unknown
         }
@@ -1135,24 +1092,17 @@ public struct RevenueCatFuse: @unchecked Sendable {
             }
             throw error
         }
-        #else
-        throw StoreError.notConfigured
-        #endif
     }
     #endif
 
     /// Restore purchases. Mirrors iOS `Purchases.restorePurchases()`.
     public func restorePurchases() async throws -> RCFuseCustomerInfo {
-        #if !SKIP_BRIDGE
         #if !SKIP
         let customerInfo = try await Purchases.shared.restorePurchases()
         return RCFuseCustomerInfo(customerInfo: customerInfo)
         #else
         let customerInfo = Purchases.sharedInstance.awaitRestore()
         return RCFuseCustomerInfo(customerInfo: customerInfo)
-        #endif
-        #else
-        throw StoreError.notConfigured
         #endif
     }
 
@@ -1179,7 +1129,6 @@ public struct RevenueCatFuse: @unchecked Sendable {
     /// `Purchases` instance if needed.
     // SKIP @nobridge
     public var customerInfoStream: AsyncStream<RCFuseCustomerInfo> {
-        #if !SKIP_BRIDGE
         #if !SKIP
         let upstream = Purchases.shared.customerInfoStream
         return AsyncStream<RCFuseCustomerInfo> { continuation in
@@ -1202,11 +1151,6 @@ public struct RevenueCatFuse: @unchecked Sendable {
         }
         return stream
         #endif
-        #else
-        return AsyncStream<RCFuseCustomerInfo> { continuation in
-            continuation.finish()
-        }
-        #endif
     }
 
     /// Sync the user's purchases with RevenueCat's servers. Mirrors iOS
@@ -1216,7 +1160,6 @@ public struct RevenueCatFuse: @unchecked Sendable {
     /// RevenueCat backend — useful after a restore on a new device or to
     /// reconcile transactions that completed outside the normal purchase flow.
     public func syncPurchases() async throws -> RCFuseCustomerInfo {
-        #if !SKIP_BRIDGE
         #if !SKIP
         let customerInfo = try await Purchases.shared.syncPurchases()
         return RCFuseCustomerInfo(customerInfo: customerInfo)
@@ -1224,14 +1167,10 @@ public struct RevenueCatFuse: @unchecked Sendable {
         let customerInfo = Purchases.sharedInstance.awaitSyncPurchases()
         return RCFuseCustomerInfo(customerInfo: customerInfo)
         #endif
-        #else
-        throw StoreError.notConfigured
-        #endif
     }
 
     /// Get current customer info. Mirrors iOS `Purchases.customerInfo()`.
     public func getCustomerInfo() async throws -> RCFuseCustomerInfo {
-        #if !SKIP_BRIDGE
         #if !SKIP
         let customerInfo = try await Purchases.shared.customerInfo()
         return RCFuseCustomerInfo(customerInfo: customerInfo)
@@ -1239,14 +1178,10 @@ public struct RevenueCatFuse: @unchecked Sendable {
         let customerInfo = Purchases.sharedInstance.awaitCustomerInfo()
         return RCFuseCustomerInfo(customerInfo: customerInfo)
         #endif
-        #else
-        throw StoreError.notConfigured
-        #endif
     }
 
     /// Set subscriber attributes for the current user.
     public func setAttributes(_ attributes: [String: String]) {
-        #if !SKIP_BRIDGE
         #if !SKIP
         Purchases.shared.setAttributes(attributes)
         #else
@@ -1256,28 +1191,23 @@ public struct RevenueCatFuse: @unchecked Sendable {
         }
         // SKIP INSERT: com.revenuecat.purchases.Purchases.sharedInstance.setAttributes(nullableMap as Map<String, String?>)
         #endif
-        #endif
     }
 
     /// Set the user's email address.
     public func setEmail(_ email: String) {
-        #if !SKIP_BRIDGE
         #if !SKIP
         Purchases.shared.setEmail(email)
         #else
         Purchases.sharedInstance.setEmail(email)
         #endif
-        #endif
     }
 
     /// Set the user's display name.
     public func setDisplayName(_ displayName: String) {
-        #if !SKIP_BRIDGE
         #if !SKIP
         Purchases.shared.setDisplayName(displayName)
         #else
         Purchases.sharedInstance.setDisplayName(displayName)
-        #endif
         #endif
     }
 
@@ -1290,7 +1220,6 @@ public struct RevenueCatFuse: @unchecked Sendable {
     /// appears in offerings, the user is eligible for it. This mirrors iOS
     /// behavior at the cost of a heuristic on Android.
     public func checkTrialOrIntroEligibility(productIdentifiers: [String]) async throws -> [String: RCFuseIntroEligibility] {
-        #if !SKIP_BRIDGE
         #if !SKIP
         let eligibility = await Purchases.shared.checkTrialOrIntroDiscountEligibility(productIdentifiers: productIdentifiers)
         var result: [String: RCFuseIntroEligibility] = [:]
@@ -1322,9 +1251,6 @@ public struct RevenueCatFuse: @unchecked Sendable {
         }
         return result
         #endif
-        #else
-        throw StoreError.notConfigured
-        #endif
     }
 }
 
@@ -1352,3 +1278,5 @@ final class CustomerInfoStreamListener: UpdatedCustomerInfoListener {
     }
 }
 #endif
+
+#endif // !SKIP_BRIDGE
