@@ -1009,7 +1009,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
         return Purchases.isConfigured
         #endif
         #else
-        fatalError("RevenueCatFuse stub used during SKIP_BRIDGE pass")
+        return false
         #endif
     }
 
@@ -1022,7 +1022,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
         return Purchases.sharedInstance.appUserID
         #endif
         #else
-        fatalError("RevenueCatFuse stub used during SKIP_BRIDGE pass")
+        return ""
         #endif
     }
 
@@ -1035,7 +1035,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
         return Purchases.sharedInstance.isAnonymous
         #endif
         #else
-        fatalError("RevenueCatFuse stub used during SKIP_BRIDGE pass")
+        return true
         #endif
     }
 
@@ -1050,7 +1050,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
         return RCFuseOfferings(offerings: offerings)
         #endif
         #else
-        fatalError("RevenueCatFuse stub used during SKIP_BRIDGE pass")
+        throw StoreError.notConfigured
         #endif
     }
 
@@ -1085,7 +1085,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
         return Array(packages.map { RCFusePackage(package: $0) })
         #endif
         #else
-        fatalError("RevenueCatFuse stub used during SKIP_BRIDGE pass")
+        throw StoreError.notConfigured
         #endif
     }
 
@@ -1108,7 +1108,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
 
         return RCFuseCustomerInfo(customerInfo: customerInfo)
         #else
-        fatalError("RevenueCatFuse stub used during SKIP_BRIDGE pass")
+        throw StoreError.notConfigured
         #endif
     }
     #endif
@@ -1136,7 +1136,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
             throw error
         }
         #else
-        fatalError("RevenueCatFuse stub used during SKIP_BRIDGE pass")
+        throw StoreError.notConfigured
         #endif
     }
     #endif
@@ -1152,7 +1152,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
         return RCFuseCustomerInfo(customerInfo: customerInfo)
         #endif
         #else
-        fatalError("RevenueCatFuse stub used during SKIP_BRIDGE pass")
+        throw StoreError.notConfigured
         #endif
     }
 
@@ -1203,7 +1203,9 @@ public struct RevenueCatFuse: @unchecked Sendable {
         return stream
         #endif
         #else
-        fatalError("RevenueCatFuse stub used during SKIP_BRIDGE pass")
+        return AsyncStream<RCFuseCustomerInfo> { continuation in
+            continuation.finish()
+        }
         #endif
     }
 
@@ -1223,7 +1225,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
         return RCFuseCustomerInfo(customerInfo: customerInfo)
         #endif
         #else
-        fatalError("RevenueCatFuse stub used during SKIP_BRIDGE pass")
+        throw StoreError.notConfigured
         #endif
     }
 
@@ -1238,7 +1240,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
         return RCFuseCustomerInfo(customerInfo: customerInfo)
         #endif
         #else
-        fatalError("RevenueCatFuse stub used during SKIP_BRIDGE pass")
+        throw StoreError.notConfigured
         #endif
     }
 
@@ -1321,7 +1323,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
         return result
         #endif
         #else
-        fatalError("RevenueCatFuse stub used during SKIP_BRIDGE pass")
+        throw StoreError.notConfigured
         #endif
     }
 }
