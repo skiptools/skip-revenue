@@ -26,17 +26,25 @@ import androidx.compose.ui.graphics.Color
 
 // MARK: - Paywall View Wrapper
 
-/// SwiftUI/Compose view wrapper for RevenueCat Paywall
+/// SwiftUI/Compose view wrapper for the RevenueCat Paywall.
 ///
-/// This view presents a fullscreen paywall UI using RevenueCat's native paywall components.
-/// - iOS: Uses PaywallView presented in a sheet or fullScreenCover
-/// - Android: Uses Paywall composable (fullscreen, not dialog)
-/// Callbacks provide the customer's user ID after purchase/restore completion.
+/// - iOS: Wraps `RevenueCatUI.PaywallView` (presented fullscreen by the caller).
+/// - Android: Embeds RevenueCat's `Paywall(options)` composable via Skip's
+///   `ComposeView { Composer(...) }` bridge — the Skip-1.9 replacement for
+///   the old `@Composable override func ComposeContent(context:)` shape.
+///
+/// Callbacks fire with the customer's user ID after purchase/restore completion.
+///
+/// Annotated `// SKIP @nobridge` because optional closure parameters
+/// (`((String) -> Void)?`) trip the Skip 1.9 bridge generator's cast logic.
+/// Use the SwiftUI surface directly from Swift; if Kotlin needs to embed this
+/// view, expose a non-generic, non-optional-closure wrapper alongside it.
+// SKIP @nobridge
 public struct RCFusePaywallView: View {
     let offering: RCFuseOffering?
-    let onPurchaseCompleted: ((String) -> Void)?  // Returns customer user ID
-    let onRestoreCompleted: ((String) -> Void)?   // Returns customer user ID
-    let onDismiss: (() -> Void)?  // Called when user dismisses paywall (X button tap)
+    let onPurchaseCompleted: ((String) -> Void)?
+    let onRestoreCompleted: ((String) -> Void)?
+    let onDismiss: (() -> Void)?
 
     public init(
         offering: RCFuseOffering? = nil,
@@ -50,9 +58,17 @@ public struct RCFusePaywallView: View {
         self.onDismiss = onDismiss
     }
 
-    #if !SKIP
     public var body: some View {
-        #if os(iOS)
+        #if os(Android)
+        ComposeView {
+            RCFusePaywallComposer(
+                offering: offering,
+                onPurchaseCompleted: onPurchaseCompleted,
+                onRestoreCompleted: onRestoreCompleted,
+                onDismiss: onDismiss
+            )
+        }
+        #elseif os(iOS)
         PaywallViewWrapper(
             offering: offering,
             onPurchaseCompleted: { customerInfo in
@@ -66,58 +82,10 @@ public struct RCFusePaywallView: View {
         EmptyView()
         #endif
     }
-    #else
-    // SKIP @nobridge
-    @Composable override func ComposeContent(context: ComposeContext) {
-        // Build fullscreen paywall options
-        // PaywallOptions.Builder requires dismissRequest as constructor parameter
-        let dismissCallback = onDismiss ?? {}
-        var builder = PaywallOptions.Builder(dismissCallback)
-
-        // Set offering if provided - use the native offering from RCFuseOffering
-        if let offering {
-            builder = builder.setOffering(offering.offering)
-        }
-
-        // Set listener for purchase/restore events
-        if onPurchaseCompleted != nil || onRestoreCompleted != nil {
-            // SKIP INSERT: val listener = object : PaywallListener {
-            // SKIP INSERT:     override fun onPurchaseCompleted(customerInfo: CustomerInfo, storeTransaction: StoreTransaction) {
-            if let onPurchaseCompleted {
-                // SKIP INSERT:         onPurchaseCompleted(customerInfo.originalAppUserId)
-                onPurchaseCompleted("") // Placeholder for Swift compilation
-            }
-            // SKIP INSERT:     }
-            // SKIP INSERT:     override fun onRestoreCompleted(customerInfo: CustomerInfo) {
-            if let onRestoreCompleted {
-                // SKIP INSERT:         onRestoreCompleted(customerInfo.originalAppUserId)
-                onRestoreCompleted("") // Placeholder for Swift compilation
-            }
-            // SKIP INSERT:     }
-            // SKIP INSERT: }
-            // SKIP INSERT: builder = builder.setListener(listener)
-        }
-
-        // Enable built-in dismiss button
-        builder = builder.setShouldDisplayDismissButton(true)
-
-        let options = builder.build()
-
-        // SKIP REPLACE: Box(
-        // SKIP REPLACE:     modifier = Modifier
-        // SKIP REPLACE:         .fillMaxSize()
-        // SKIP REPLACE:         .background(Color(0xFF20003C)) // Dark purple background to match paywall
-        // SKIP REPLACE:         .systemBarsPadding()
-        // SKIP REPLACE: ) {
-        // SKIP REPLACE:     Paywall(options)
-        // SKIP REPLACE: }
-        Paywall(options)
-    }
-    #endif
 }
 
 #if !SKIP && os(iOS)
-// iOS-specific wrapper to handle offering loading
+/// iOS-specific bridge to RevenueCatUI's `PaywallView`.
 @available(iOS 15.0, *)
 private struct PaywallViewWrapper: View {
     let offering: RCFuseOffering?
@@ -138,6 +106,62 @@ private struct PaywallViewWrapper: View {
                 EmptyView()
             }
         }
+    }
+}
+#endif
+
+// MARK: - Android Compose integration
+
+#if SKIP
+/// Composer that hosts RevenueCat's `Paywall(options)` composable inside Skip's
+/// `ComposeView`. Built per the Skip-1.9 pattern: `ContentComposer` struct with
+/// a `@Composable override func Compose(context:)` — `ComposeContext` is no
+/// longer surfaced through `View` directly, so the body uses
+/// `ComposeView { RCFusePaywallComposer(...) }` to forward into Compose.
+struct RCFusePaywallComposer: ContentComposer {
+    let offering: RCFuseOffering?
+    let onPurchaseCompleted: ((String) -> Void)?
+    let onRestoreCompleted: ((String) -> Void)?
+    let onDismiss: (() -> Void)?
+
+    @Composable override func Compose(context: ComposeContext) {
+        let dismissCallback = onDismiss ?? {}
+        var builder = PaywallOptions.Builder(dismissCallback)
+
+        if let offering {
+            builder = builder.setOffering(offering.offering)
+        }
+
+        if onPurchaseCompleted != nil || onRestoreCompleted != nil {
+            // SKIP INSERT: val listener = object : PaywallListener {
+            // SKIP INSERT:     override fun onPurchaseCompleted(customerInfo: CustomerInfo, storeTransaction: StoreTransaction) {
+            if let onPurchaseCompleted {
+                // SKIP INSERT:         onPurchaseCompleted(customerInfo.originalAppUserId)
+                onPurchaseCompleted("") // Placeholder for Swift compilation
+            }
+            // SKIP INSERT:     }
+            // SKIP INSERT:     override fun onRestoreCompleted(customerInfo: CustomerInfo) {
+            if let onRestoreCompleted {
+                // SKIP INSERT:         onRestoreCompleted(customerInfo.originalAppUserId)
+                onRestoreCompleted("") // Placeholder for Swift compilation
+            }
+            // SKIP INSERT:     }
+            // SKIP INSERT: }
+            // SKIP INSERT: builder = builder.setListener(listener)
+        }
+
+        builder = builder.setShouldDisplayDismissButton(true)
+        let options = builder.build()
+
+        // SKIP REPLACE: androidx.compose.foundation.layout.Box(
+        // SKIP REPLACE:     modifier = androidx.compose.ui.Modifier
+        // SKIP REPLACE:         .fillMaxSize()
+        // SKIP REPLACE:         .background(androidx.compose.ui.graphics.Color(0xFF20003C))
+        // SKIP REPLACE:         .systemBarsPadding()
+        // SKIP REPLACE: ) {
+        // SKIP REPLACE:     com.revenuecat.purchases.ui.revenuecatui.Paywall(options)
+        // SKIP REPLACE: }
+        Paywall(options)
     }
 }
 #endif

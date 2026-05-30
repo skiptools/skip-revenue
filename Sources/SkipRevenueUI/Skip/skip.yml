@@ -4,6 +4,7 @@
 
 # RevenueCat Android UI SDK dependency
 skip:
+  mode: 'transpiled'
   bridging: true
 
 build:

@@ -37,15 +37,22 @@ let package = Package(
 )
 
 if Context.environment["SKIP_BRIDGE"] ?? "0" != "0" {
+    // Match skip-firebase's bridge configuration: depend on skip-fuse (modern
+    // bridge generator emits `BridgedFromKotlin` redeclarations for types
+    // declared inside `#if !SKIP_BRIDGE`, which lets the entire impl live in
+    // the gated branch — the alternative `skip-bridge` package emits
+    // `BridgedToKotlin` extensions that need the type visible in the bridge
+    // pass, which forces stub `fatalError` bodies that crash at runtime).
+    // `SkipFuseUI` is still pulled in for `RCFusePaywallView` (`SkipRevenueUI`).
     package.dependencies += [
-        .package(url: "https://source.skip.tools/skip-bridge.git", "0.0.0"..<"2.0.0"),
+        .package(url: "https://source.skip.tools/skip-fuse.git", "0.0.0"..<"2.0.0"),
         .package(url: "https://source.skip.tools/skip-fuse-ui.git", from: "1.0.0")
     ]
     package.targets.forEach({ target in
-        target.dependencies += [
-            .product(name: "SkipBridge", package: "skip-bridge"),
-            .product(name: "SkipFuseUI", package: "skip-fuse-ui")
-        ]
+        target.dependencies += [.product(name: "SkipFuse", package: "skip-fuse")]
+        if target.name == "SkipRevenueUI" || target.name == "SkipRevenueUITests" {
+            target.dependencies += [.product(name: "SkipFuseUI", package: "skip-fuse-ui")]
+        }
     })
     // all library types must be dynamic to support bridging
     package.products = package.products.map({ product in
