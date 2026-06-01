@@ -604,6 +604,12 @@ public final class RCFuseCustomerInfo: @unchecked Sendable {
         return customerInfo.allPurchasedProductIdentifiers
     }
 
+    /// The product identifiers of all currently-active subscriptions.
+    /// Mirrors iOS `CustomerInfo.activeSubscriptions`.
+    public var activeSubscriptions: Set<String> {
+        return customerInfo.activeSubscriptions
+    }
+
     public var firstSeen: Date {
         return customerInfo.firstSeen
     }
@@ -657,6 +663,12 @@ public final class RCFuseCustomerInfo: KotlinConverting<com.revenuecat.purchases
 
     public var allPurchasedProductIdentifiers: Set<String> {
         return Set(customerInfo.allPurchasedProductIds)
+    }
+
+    /// The product identifiers of all currently-active subscriptions.
+    /// Mirrors iOS `CustomerInfo.activeSubscriptions`.
+    public var activeSubscriptions: Set<String> {
+        return Set(customerInfo.activeSubscriptions)
     }
 
     public var firstSeen: Date {
