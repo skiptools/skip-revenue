@@ -84,6 +84,42 @@ public struct RCFusePaywallView: View {
     }
 }
 
+/// Bridgeable companion to ``RCFusePaywallView``.
+///
+/// ``RCFusePaywallView`` is `// SKIP @nobridge` — its optional closure
+/// parameters trip the Skip 1.9 bridge generator, so it cannot be referenced
+/// across the bridge boundary by a native-mode Skip Fuse app. This wrapper
+/// takes **non-optional** closures (which bridge cleanly) and forwards to
+/// ``RCFusePaywallView`` internally — same module, so no boundary crossing on
+/// that reference. Native app code should present this type.
+public struct RCFusePaywall: View {
+    let offering: RCFuseOffering?
+    let onPurchaseCompleted: (String) -> Void
+    let onRestoreCompleted: (String) -> Void
+    let onDismiss: () -> Void
+
+    public init(
+        offering: RCFuseOffering? = nil,
+        onPurchaseCompleted: @escaping (String) -> Void = { _ in },
+        onRestoreCompleted: @escaping (String) -> Void = { _ in },
+        onDismiss: @escaping () -> Void = {}
+    ) {
+        self.offering = offering
+        self.onPurchaseCompleted = onPurchaseCompleted
+        self.onRestoreCompleted = onRestoreCompleted
+        self.onDismiss = onDismiss
+    }
+
+    public var body: some View {
+        RCFusePaywallView(
+            offering: offering,
+            onPurchaseCompleted: onPurchaseCompleted,
+            onRestoreCompleted: onRestoreCompleted,
+            onDismiss: onDismiss
+        )
+    }
+}
+
 #if !SKIP && (os(iOS) || os(macOS))
 /// Apple-platform bridge to RevenueCatUI's `PaywallView`.
 ///
