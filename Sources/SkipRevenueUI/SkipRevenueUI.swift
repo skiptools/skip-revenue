@@ -68,7 +68,7 @@ public struct RCFusePaywallView: View {
                 onDismiss: onDismiss
             )
         }
-        #elseif os(iOS)
+        #elseif os(iOS) || os(macOS)
         PaywallViewWrapper(
             offering: offering,
             onPurchaseCompleted: { customerInfo in
@@ -84,9 +84,12 @@ public struct RCFusePaywallView: View {
     }
 }
 
-#if !SKIP && os(iOS)
-/// iOS-specific bridge to RevenueCatUI's `PaywallView`.
-@available(iOS 15.0, *)
+#if !SKIP && (os(iOS) || os(macOS))
+/// Apple-platform bridge to RevenueCatUI's `PaywallView`.
+///
+/// macOS is supported from RevenueCat 5.x onward (`PaywallView` is
+/// `@available(macOS 12.0, *)`); in 4.x it was `@available(macOS, unavailable)`.
+@available(iOS 15.0, macOS 12.0, *)
 private struct PaywallViewWrapper: View {
     let offering: RCFuseOffering?
     let onPurchaseCompleted: ((RevenueCat.CustomerInfo) -> Void)?
