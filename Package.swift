@@ -13,7 +13,7 @@ let package = Package(
         .package(url: "https://source.skip.tools/skip.git", from: "1.6.36"),
         .package(url: "https://source.skip.tools/skip-ui.git", from: "1.0.0"),
         .package(url: "https://source.skip.tools/skip-foundation.git", from: "1.0.0"),
-        .package(url: "https://github.com/RevenueCat/purchases-ios.git", from: "4.43.0")
+        .package(url: "https://github.com/RevenueCat/purchases-ios.git", from: "5.0.0")
     ],
     targets: [
         .target(name: "SkipRevenue", dependencies: [
