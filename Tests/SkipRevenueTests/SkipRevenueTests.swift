@@ -52,6 +52,16 @@ final class SkipRevenueTests: XCTestCase {
         XCTAssertNotNil(service)
     }
 
+    func testLogLevel() throws {
+        // Round-trips every level through the underlying Purchases.logLevel on both platforms. (#4)
+        let service = RevenueCatFuse.shared
+        for level: RCFuseLogLevel in [.verbose, .debug, .info, .warn, .error] {
+            service.logLevel = level
+            XCTAssertEqual(level, service.logLevel)
+        }
+        XCTAssertEqual(RCFuseLogLevel.verbose.rawValue, "verbose")
+    }
+
     // RCFusePeriodType raw values must equal RevenueCat's native `PeriodType`
     // ordinals (iOS `normal=0…prepaid=3`; the Android branch maps the
     // UPPER_SNAKE enum names onto these). Cross-platform callers that persist
