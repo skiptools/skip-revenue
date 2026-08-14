@@ -39,16 +39,28 @@ import com.revenuecat.purchases.models.Period
 // MARK: - Value types
 
 /// The type of a RevenueCat package. Mirrors iOS `RevenueCat.PackageType`.
-public enum RCFusePackageType: String {
-    case unknown
-    case custom
-    case lifetime
-    case annual
-    case sixMonth
-    case threeMonth
-    case twoMonth
-    case monthly
-    case weekly
+public enum RCFusePackageType: Int, Comparable {
+    case monthly = 0
+    case annual = 1
+    case lifetime = 2
+    case weekly = 3
+    case twoMonth = 4
+    case threeMonth = 5
+    case sixMonth = 6
+    case custom = 7
+    case unknown = 8
+
+    // MARK: - Comparable
+
+    /// Returns whether the left package type should sort before the right package type.
+    ///
+    /// - Parameters:
+    ///   - lhs: The left package type.
+    ///   - rhs: The right package type.
+    /// - Returns: True if the left package type sorts before the right package type.
+    public static func < (lhs: RCFusePackageType, rhs: RCFusePackageType) -> Bool {
+        return lhs.rawValue < rhs.rawValue
+    }
 }
 
 /// Subscription period unit. Mirrors iOS `RevenueCat.SubscriptionPeriod.Unit`.
@@ -148,8 +160,88 @@ public enum StoreError: Error {
     case notConfigured
 }
 
-extension StoreError: LocalizedError {
+public enum RCFuseErrorCode: Int, Sendable {
+    case unknownError = 0
+    case purchaseCancelledError = 1
+    case storeProblemError = 2
+    case purchaseNotAllowedError = 3
+    case purchaseInvalidError = 4
+    case productNotAvailableForPurchaseError = 5
+    case productAlreadyPurchasedError = 6
+    case receiptAlreadyInUseError = 7
+    case invalidReceiptError = 8
+    case missingReceiptFileError = 9
+    case networkError = 10
+    case invalidCredentialsError = 11
+    case unexpectedBackendResponseError = 12
+    case receiptInUseByOtherSubscriberError = 13
+    case invalidAppUserIdError = 14
+    case operationAlreadyInProgressForProductError = 15
+    case unknownBackendError = 16
+    case invalidAppleSubscriptionKeyError = 17
+    case ineligibleError = 18
+    case insufficientPermissionsError = 19
+    case paymentPendingError = 20
+    case invalidSubscriberAttributesError = 21
+    case logOutAnonymousUserError = 22
+    case configurationError = 23
+    case unsupportedError = 24
+    case emptySubscriberAttributes = 25
+    case productDiscountMissingIdentifierError = 26
+    case productDiscountMissingSubscriptionGroupIdentifierError = 28
+    case customerInfoError = 29
+    case systemInfoError = 30
+    case beginRefundRequestError = 31
+    case productRequestTimedOut = 32
+    case apiEndpointBlockedError = 33
+    case invalidPromotionalOfferError = 34
+    case offlineConnectionError = 35
+    case featureNotAvailableInCustomEntitlementsComputationMode = 36
+    case signatureVerificationFailed = 37
+    case featureNotSupportedWithStoreKit1 = 38
+    case invalidWebPurchaseToken = 39
+    case purchaseBelongsToOtherUser = 40
+    case expiredWebPurchaseToken = 41
+    case testStoreSimulatedPurchaseError = 42
+
+    public init(error: Error) {
+        #if !SKIP
+        if let errorCode = error as? ErrorCode {
+            self = RCFuseErrorCode(rawValue: errorCode.rawValue) ?? .unknownError
+            return
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == ErrorCode.errorDomain {
+            self = RCFuseErrorCode(rawValue: nsError.code) ?? .unknownError
+            return
+        }
+        #else
+        if let transactionException = error as? PurchasesTransactionException {
+            self = .unknownError
+            // SKIP REPLACE: return RCFuseErrorCode(rawValue = transactionException.error.code.code) ?: RCFuseErrorCode.unknownError
+            return
+        }
+        #endif
+
+        self = .unknownError
+    }
+}
+
+extension StoreError: LocalizedError, CustomStringConvertible {
     public var errorDescription: String? {
+        return self.message
+    }
+
+    public var description: String {
+        return self.message
+    }
+
+    public var localizedDescription: String {
+        return self.message
+    }
+
+    private var message: String {
         switch self {
         case .userCancelled: return "User cancelled"
         case .unknown: return "Unknown error"
@@ -479,6 +571,20 @@ public final class RCFuseStoreProduct: @unchecked Sendable {
         return product.introductoryDiscount?.localizedPriceString
     }
 
+    /// The introductory discount period, if an intro offer is available.
+    public var introductoryDiscountPeriod: RCFuseSubscriptionPeriod? {
+        guard let period = product.introductoryDiscount?.subscriptionPeriod else { return nil }
+        let unit: RCFuseSubscriptionPeriodUnit
+        switch period.unit {
+        case .day: unit = .day
+        case .week: unit = .week
+        case .month: unit = .month
+        case .year: unit = .year
+        @unknown default: unit = .unknown
+        }
+        return RCFuseSubscriptionPeriod(unit: unit, value: period.value)
+    }
+
     public var subscriptionPeriod: RCFuseSubscriptionPeriod? {
         guard let period = product.subscriptionPeriod else { return nil }
         let unit: RCFuseSubscriptionPeriodUnit
@@ -552,8 +658,18 @@ public final class RCFuseStoreProduct: KotlinConverting<com.revenuecat.purchases
         return nil // Intro price string not directly available on Android StoreProduct
     }
 
+    public var introductoryDiscountPeriod: RCFuseSubscriptionPeriod? {
+        let period = product.defaultOption?.freePhase?.billingPeriod ??
+            product.subscriptionOptions?.freeTrial?.freePhase?.billingPeriod
+        return self.subscriptionPeriod(from: period)
+    }
+
     public var subscriptionPeriod: RCFuseSubscriptionPeriod? {
-        guard let period = product.period else { return nil }
+        return self.subscriptionPeriod(from: product.period)
+    }
+
+    private func subscriptionPeriod(from period: Period?) -> RCFuseSubscriptionPeriod? {
+        guard let period else { return nil }
         let unit: RCFuseSubscriptionPeriodUnit
         switch period.unit {
         case com.revenuecat.purchases.models.Period.Unit.DAY: unit = .day
@@ -944,6 +1060,8 @@ public final class RCFuseEntitlementInfo: KotlinConverting<com.revenuecat.purcha
 /// compatibility. Mirrors iOS `RevenueCat.Purchases` static methods.
 public struct RevenueCatFuse: @unchecked Sendable {
     public static let shared = RevenueCatFuse()
+    nonisolated(unsafe) private static var cachedCustomerInfoValue: RCFuseCustomerInfo?
+    nonisolated(unsafe) private static var cachedOfferingsValue: RCFuseOfferings?
 
     private init() {}
 
@@ -978,6 +1096,17 @@ public struct RevenueCatFuse: @unchecked Sendable {
         #endif
     }
 
+    /// Sets the RevenueCat proxy URL.
+    ///
+    /// Set this before calling `configure(apiKey:)`.
+    public func setProxyURL(_ url: URL?) {
+        #if !SKIP
+        Purchases.proxyURL = url
+        #else
+        Purchases.proxyURL = url.map { java.net.URL($0.absoluteString) }
+        #endif
+    }
+
     /// Log in a user with the given user ID. Mirrors iOS `Purchases.logIn(_:)`.
     public func loginUser(userId: String) async throws {
         #if !SKIP
@@ -994,6 +1123,7 @@ public struct RevenueCatFuse: @unchecked Sendable {
         #else
         let _ = Purchases.sharedInstance.awaitLogOut()
         #endif
+        Self.cachedCustomerInfoValue = nil
     }
 
     /// Whether the SDK is configured and ready to use.
@@ -1014,6 +1144,42 @@ public struct RevenueCatFuse: @unchecked Sendable {
         #endif
     }
 
+    /// The latest cached customer info, if RevenueCat has loaded one.
+    ///
+    /// On iOS this reads RevenueCat's native `cachedCustomerInfo`. On Android,
+    /// RevenueCat exposes customer info through async calls/listeners, so this
+    /// returns the last value seen by this wrapper.
+    public var cachedCustomerInfo: RCFuseCustomerInfo? {
+        #if !SKIP
+        guard let customerInfo = Purchases.shared.cachedCustomerInfo else {
+            return Self.cachedCustomerInfoValue
+        }
+        let wrappedCustomerInfo = RCFuseCustomerInfo(customerInfo: customerInfo)
+        Self.cachedCustomerInfoValue = wrappedCustomerInfo
+        return wrappedCustomerInfo
+        #else
+        return Self.cachedCustomerInfoValue
+        #endif
+    }
+
+    /// The latest cached offerings, if RevenueCat has loaded them.
+    ///
+    /// On iOS this reads RevenueCat's native `cachedOfferings`. On Android,
+    /// RevenueCat exposes offerings through async calls, so this returns the
+    /// last value loaded by this wrapper.
+    public var cachedOfferings: RCFuseOfferings? {
+        #if !SKIP
+        guard let offerings = Purchases.shared.cachedOfferings else {
+            return Self.cachedOfferingsValue
+        }
+        let wrappedOfferings = RCFuseOfferings(offerings: offerings)
+        Self.cachedOfferingsValue = wrappedOfferings
+        return wrappedOfferings
+        #else
+        return Self.cachedOfferingsValue
+        #endif
+    }
+
     /// Whether the current user is anonymous.
     public var isAnonymous: Bool {
         #if !SKIP
@@ -1027,10 +1193,14 @@ public struct RevenueCatFuse: @unchecked Sendable {
     public func loadOfferings() async throws -> RCFuseOfferings {
         #if !SKIP
         let offerings = try await Purchases.shared.offerings()
-        return RCFuseOfferings(offerings: offerings)
+        let wrappedOfferings = RCFuseOfferings(offerings: offerings)
+        Self.cachedOfferingsValue = wrappedOfferings
+        return wrappedOfferings
         #else
         let offerings = Purchases.sharedInstance.awaitOfferings()
-        return RCFuseOfferings(offerings: offerings)
+        let wrappedOfferings = RCFuseOfferings(offerings: offerings)
+        Self.cachedOfferingsValue = wrappedOfferings
+        return wrappedOfferings
         #endif
     }
 
@@ -1038,6 +1208,8 @@ public struct RevenueCatFuse: @unchecked Sendable {
     public func loadProducts(offeringIdentifier: String? = nil) async throws -> [RCFusePackage] {
         #if !SKIP
         let offerings = try await Purchases.shared.offerings()
+        let wrappedOfferings = RCFuseOfferings(offerings: offerings)
+        Self.cachedOfferingsValue = wrappedOfferings
         let offering = offeringIdentifier != nil ? offerings.offering(identifier: offeringIdentifier!) : offerings.current
 
         guard let packages = offering?.availablePackages else {
@@ -1051,6 +1223,8 @@ public struct RevenueCatFuse: @unchecked Sendable {
         return packages.map { RCFusePackage(package: $0) }
         #else
         let offerings = Purchases.sharedInstance.awaitOfferings()
+        let wrappedOfferings = RCFuseOfferings(offerings: offerings)
+        Self.cachedOfferingsValue = wrappedOfferings
         let offering = offeringIdentifier != nil ? offerings.all[offeringIdentifier!] : offerings.current
 
         guard let packages = offering?.availablePackages else {
@@ -1081,7 +1255,9 @@ public struct RevenueCatFuse: @unchecked Sendable {
             throw StoreError.userCancelled
         }
 
-        return RCFuseCustomerInfo(customerInfo: customerInfo)
+        let wrappedCustomerInfo = RCFuseCustomerInfo(customerInfo: customerInfo)
+        Self.cachedCustomerInfoValue = wrappedCustomerInfo
+        return wrappedCustomerInfo
     }
     #else
     /// Purchase a package (Android) — requires the host `Activity`, wrapped in
@@ -1097,7 +1273,9 @@ public struct RevenueCatFuse: @unchecked Sendable {
 
         do {
             let result = Purchases.sharedInstance.awaitPurchase(params)
-            return RCFuseCustomerInfo(customerInfo: result.customerInfo)
+            let wrappedCustomerInfo = RCFuseCustomerInfo(customerInfo: result.customerInfo)
+            Self.cachedCustomerInfoValue = wrappedCustomerInfo
+            return wrappedCustomerInfo
         } catch let error as PurchasesTransactionException {
             if error.userCancelled {
                 throw StoreError.userCancelled
@@ -1111,10 +1289,14 @@ public struct RevenueCatFuse: @unchecked Sendable {
     public func restorePurchases() async throws -> RCFuseCustomerInfo {
         #if !SKIP
         let customerInfo = try await Purchases.shared.restorePurchases()
-        return RCFuseCustomerInfo(customerInfo: customerInfo)
+        let wrappedCustomerInfo = RCFuseCustomerInfo(customerInfo: customerInfo)
+        Self.cachedCustomerInfoValue = wrappedCustomerInfo
+        return wrappedCustomerInfo
         #else
         let customerInfo = Purchases.sharedInstance.awaitRestore()
-        return RCFuseCustomerInfo(customerInfo: customerInfo)
+        let wrappedCustomerInfo = RCFuseCustomerInfo(customerInfo: customerInfo)
+        Self.cachedCustomerInfoValue = wrappedCustomerInfo
+        return wrappedCustomerInfo
         #endif
     }
 
@@ -1146,7 +1328,9 @@ public struct RevenueCatFuse: @unchecked Sendable {
         return AsyncStream<RCFuseCustomerInfo> { continuation in
             let task = Task {
                 for await info in upstream {
-                    continuation.yield(RCFuseCustomerInfo(customerInfo: info))
+                    let wrappedCustomerInfo = RCFuseCustomerInfo(customerInfo: info)
+                    Self.cachedCustomerInfoValue = wrappedCustomerInfo
+                    continuation.yield(wrappedCustomerInfo)
                 }
                 continuation.finish()
             }
@@ -1156,7 +1340,9 @@ public struct RevenueCatFuse: @unchecked Sendable {
         let (stream, continuation) = AsyncStream.makeStream(of: RCFuseCustomerInfo.self)
         let purchases = Purchases.sharedInstance
         purchases.updatedCustomerInfoListener = CustomerInfoStreamListener { info in
-            continuation.yield(RCFuseCustomerInfo(customerInfo: info))
+            let wrappedCustomerInfo = RCFuseCustomerInfo(customerInfo: info)
+            Self.cachedCustomerInfoValue = wrappedCustomerInfo
+            continuation.yield(wrappedCustomerInfo)
         }
         continuation.onTermination = { _ in
             purchases.removeUpdatedCustomerInfoListener()
@@ -1174,10 +1360,14 @@ public struct RevenueCatFuse: @unchecked Sendable {
     public func syncPurchases() async throws -> RCFuseCustomerInfo {
         #if !SKIP
         let customerInfo = try await Purchases.shared.syncPurchases()
-        return RCFuseCustomerInfo(customerInfo: customerInfo)
+        let wrappedCustomerInfo = RCFuseCustomerInfo(customerInfo: customerInfo)
+        Self.cachedCustomerInfoValue = wrappedCustomerInfo
+        return wrappedCustomerInfo
         #else
         let customerInfo = Purchases.sharedInstance.awaitSyncPurchases()
-        return RCFuseCustomerInfo(customerInfo: customerInfo)
+        let wrappedCustomerInfo = RCFuseCustomerInfo(customerInfo: customerInfo)
+        Self.cachedCustomerInfoValue = wrappedCustomerInfo
+        return wrappedCustomerInfo
         #endif
     }
 
@@ -1185,10 +1375,14 @@ public struct RevenueCatFuse: @unchecked Sendable {
     public func getCustomerInfo() async throws -> RCFuseCustomerInfo {
         #if !SKIP
         let customerInfo = try await Purchases.shared.customerInfo()
-        return RCFuseCustomerInfo(customerInfo: customerInfo)
+        let wrappedCustomerInfo = RCFuseCustomerInfo(customerInfo: customerInfo)
+        Self.cachedCustomerInfoValue = wrappedCustomerInfo
+        return wrappedCustomerInfo
         #else
         let customerInfo = Purchases.sharedInstance.awaitCustomerInfo()
-        return RCFuseCustomerInfo(customerInfo: customerInfo)
+        let wrappedCustomerInfo = RCFuseCustomerInfo(customerInfo: customerInfo)
+        Self.cachedCustomerInfoValue = wrappedCustomerInfo
+        return wrappedCustomerInfo
         #endif
     }
 

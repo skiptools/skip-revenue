@@ -67,6 +67,16 @@ You can also configure with a known user ID:
 RevenueCatFuse.shared.configure(apiKey: "appl_your_ios_api_key", appUserID: "user-123")
 ```
 
+Optional lifecycle settings can be applied around configuration:
+
+```swift
+// Set before configure when you need to route RevenueCat API traffic through a proxy.
+RevenueCatFuse.shared.setProxyURL(URL(string: "https://api.rc-backup.com/"))
+RevenueCatFuse.shared.configure(apiKey: "appl_your_ios_api_key")
+```
+
+`setProxyURL(_:)` maps to `Purchases.proxyURL` on iOS and Android. Set it before `configure(apiKey:)`.
+
 See the RevenueCat [API Keys](https://www.revenuecat.com/docs/getting-started/projects#api-keys) documentation for information on obtaining your platform-specific API keys.
 
 ### User Identification
@@ -178,6 +188,34 @@ for package in offering.availablePackages {
 }
 ```
 
+### Error Mapping
+
+Map native RevenueCat purchase errors to cross-platform error codes before showing user-facing messages:
+
+```swift
+do {
+    let customerInfo = try await RevenueCatFuse.shared.purchase(package: package)
+    print(customerInfo.originalAppUserId)
+} catch StoreError.userCancelled {
+    // The user cancelled the purchase flow.
+} catch {
+    switch RCFuseErrorCode(error: error) {
+    case .storeProblemError:
+        print("The store could not process the purchase.")
+    case .purchaseNotAllowedError:
+        print("Purchases are not allowed on this device.")
+    case .purchaseInvalidError:
+        print("The purchase is invalid.")
+    case .networkError:
+        print("The network request failed.")
+    default:
+        print(error.localizedDescription)
+    }
+}
+```
+
+`RCFuseErrorCode` mirrors RevenueCat's public error-code raw values and normalizes native iOS and Android purchase errors into a shared Swift enum.
+
 ### Store Product Details
 
 Access product pricing and metadata:
@@ -192,9 +230,28 @@ print("Price: \(product.localizedPriceString)")  // e.g., "$9.99"
 print("Price value: \(product.price)")             // e.g., 9.99
 print("Currency: \(product.currencyCode ?? "")")   // e.g., "USD"
 
-// Introductory offer (iOS only)
+// Introductory offer details
 if let introPrice = product.localizedIntroductoryPriceString {
     print("Intro price: \(introPrice)")
+}
+if let introPeriod = product.introductoryDiscountPeriod {
+    print("Intro period: \(introPeriod.value) \(introPeriod.unit)")
+}
+```
+
+`localizedIntroductoryPriceString` is only available when the platform SDK exposes a localized intro price. `introductoryDiscountPeriod` is available for iOS introductory discounts and Android Google Play free-trial phases when present.
+
+Check whether the current customer is eligible for a trial or introductory discount before presenting trial-specific copy:
+
+```swift
+let productIds = packages.map { $0.storeProduct.productIdentifier }
+let eligibilities = try await RevenueCatFuse.shared.checkTrialOrIntroEligibility(
+    productIdentifiers: productIds
+)
+
+if eligibilities[package.storeProduct.productIdentifier]?.status == .eligible,
+   package.storeProduct.introductoryDiscountPeriod != nil {
+    print("Show free trial CTA")
 }
 ```
 
@@ -373,6 +430,8 @@ The main service singleton for all RevenueCat operations.
 | `isConfigured: Bool` | Whether the SDK is configured |
 | `appUserID: String` | Current app user ID |
 | `isAnonymous: Bool` | Whether the current user is anonymous |
+| `cachedCustomerInfo: RCFuseCustomerInfo?` | Latest cached customer info, if available |
+| `cachedOfferings: RCFuseOfferings?` | Latest cached offerings, if available |
 | `loginUser(userId:) async throws` | Log in with a user ID |
 | `logoutUser() async throws` | Log out to anonymous |
 | `loadOfferings() async throws` | Load all offerings |
