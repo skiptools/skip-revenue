@@ -230,18 +230,14 @@ public enum RCFuseErrorCode: Int, Sendable {
 
 extension StoreError: LocalizedError, CustomStringConvertible {
     public var errorDescription: String? {
-        return self.message
+        return self.errorMessage
     }
 
     public var description: String {
-        return self.message
+        return self.errorMessage
     }
 
-    public var localizedDescription: String {
-        return self.message
-    }
-
-    private var message: String {
+    private var errorMessage: String {
         switch self {
         case .userCancelled: return "User cancelled"
         case .unknown: return "Unknown error"
