@@ -5,7 +5,7 @@
 The framework contains two modules:
 
 - **SkipRevenue** — Core service for configuring RevenueCat, loading offerings, purchasing packages, restoring purchases, and managing customer info.
-- **SkipRevenueUI** — A `RCFusePaywallView` SwiftUI component that presents RevenueCat's native paywall UI on both platforms.
+- **SkipRevenueUI** — SwiftUI components for RevenueCat's native paywall and debug UI on both platforms.
 
 ## Setup
 
@@ -359,6 +359,30 @@ if let premium = offerings.offering(identifier: "premium") {
 
 See the RevenueCat [Paywalls](https://www.revenuecat.com/docs/tools/paywalls) documentation for information on designing and configuring paywall templates in the RevenueCat dashboard.
 
+### Debug UI
+
+The `SkipRevenueUI` module provides `skipRevenueDebugOverlay`, a cross-platform SwiftUI modifier for RevenueCat's native debug UI.
+
+```swift
+import SwiftUI
+import SkipRevenueUI
+
+struct RevenueCatDebugView: View {
+    @State var showDebugView = false
+
+    var body: some View {
+        VStack {
+            Button("Show Debug View") {
+                showDebugView = true
+            }
+        }
+        .skipRevenueDebugOverlay(isPresented: $showDebugView)
+    }
+}
+```
+
+See the RevenueCat [Debugging](https://www.revenuecat.com/docs/test-and-launch/debugging) documentation for more information on the native debug UI.
+
 ## API Reference
 
 ### RevenueCatFuse
@@ -477,6 +501,12 @@ The main service singleton for all RevenueCat operations.
 | `onPurchaseCompleted: ((String) -> Void)?` | Callback with user ID after purchase |
 | `onRestoreCompleted: ((String) -> Void)?` | Callback with user ID after restore |
 | `onDismiss: (() -> Void)?` | Called when user dismisses the paywall |
+
+### Debug Overlay
+
+| Modifier | Description |
+|---|---|
+| `skipRevenueDebugOverlay(isPresented:)` | Presents the debug overlay while the binding is `true` |
 
 ## Building
 
