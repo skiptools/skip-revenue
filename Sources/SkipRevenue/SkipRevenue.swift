@@ -454,6 +454,16 @@ public final class RCFusePackage: @unchecked Sendable {
         return package.identifier
     }
 
+    /// The identifier of the offering this package was fetched from.
+    ///
+    /// Mirrors `RevenueCat.Package.offeringIdentifier` (iOS) and
+    /// `Package.presentedOfferingContext.offeringIdentifier` (Android), so a
+    /// purchase can be attributed to its offering without the app having to
+    /// thread that context through its own UI layer.
+    public var offeringIdentifier: String {
+        return package.offeringIdentifier
+    }
+
     public var packageType: RCFusePackageType {
         switch package.packageType {
         case .lifetime: return .lifetime
@@ -497,6 +507,14 @@ public final class RCFusePackage: KotlinConverting<com.revenuecat.purchases.Pack
 
     public var identifier: String {
         return package.identifier
+    }
+
+    /// The identifier of the offering this package was fetched from.
+    ///
+    /// Reads `presentedOfferingContext` rather than the deprecated
+    /// `Package.offering` property, which the Android SDK marks for removal.
+    public var offeringIdentifier: String {
+        return package.presentedOfferingContext.offeringIdentifier
     }
 
     public var packageType: RCFusePackageType {
