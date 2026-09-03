@@ -12,3 +12,5 @@ build:
     - block: 'dependencies'
       contents:
         - 'implementation("com.revenuecat.purchases:purchases-ui:9.19.0")'
+        - 'debugImplementation("com.revenuecat.purchases:purchases-debug-view:9.19.0")'
+        - 'releaseImplementation("com.revenuecat.purchases:purchases-debug-view-noop:9.19.0")'

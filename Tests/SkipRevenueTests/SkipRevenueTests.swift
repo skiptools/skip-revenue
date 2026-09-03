@@ -43,8 +43,9 @@ final class SkipRevenueTests: XCTestCase {
             .sixMonth, .threeMonth, .twoMonth, .monthly, .weekly
         ]
         XCTAssertEqual(types.count, 9)
-        XCTAssertEqual(RCFusePackageType.annual.rawValue, "annual")
-        XCTAssertEqual(RCFusePackageType.monthly.rawValue, "monthly")
+        XCTAssertEqual(RCFusePackageType.monthly.rawValue, 0)
+        XCTAssertEqual(RCFusePackageType.annual.rawValue, 1)
+        XCTAssertLessThan(RCFusePackageType.monthly, RCFusePackageType.annual)
     }
 
     func testRevenueCatFuseSingleton() throws {
