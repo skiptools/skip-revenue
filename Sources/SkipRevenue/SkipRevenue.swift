@@ -63,6 +63,15 @@ public enum RCFusePackageType: Int, Comparable {
     }
 }
 
+/// Logging verbosity for the RevenueCat SDK, mirroring `RevenueCat.LogLevel`.
+public enum RCFuseLogLevel: String {
+    case verbose
+    case debug
+    case info
+    case warn
+    case error
+}
+
 /// Subscription period unit. Mirrors iOS `RevenueCat.SubscriptionPeriod.Unit`.
 public enum RCFuseSubscriptionPeriodUnit: Int, Sendable {
     case day = 0
@@ -1110,6 +1119,50 @@ public struct RevenueCatFuse: @unchecked Sendable {
         #endif
     }
 
+    /// The logging verbosity of the underlying RevenueCat SDK, mirroring `Purchases.logLevel`.
+    ///
+    /// `configure(...)` enables `.debug` by default; set this afterwards (e.g. to `.verbose`)
+    /// to surface detailed purchase/billing diagnostics in the console or logcat. (#4)
+    public var logLevel: RCFuseLogLevel {
+        get {
+            #if !SKIP
+            switch Purchases.logLevel {
+            case .verbose: return .verbose
+            case .debug: return .debug
+            case .info: return .info
+            case .warn: return .warn
+            case .error: return .error
+            @unknown default: return .debug
+            }
+            #else
+            switch "\(Purchases.logLevel)" {
+            case "VERBOSE": return .verbose
+            case "INFO": return .info
+            case "WARN": return .warn
+            case "ERROR": return .error
+            default: return .debug
+            }
+            #endif
+        }
+        nonmutating set {
+            #if !SKIP
+            switch newValue {
+            case .verbose: Purchases.logLevel = .verbose
+            case .debug: Purchases.logLevel = .debug
+            case .info: Purchases.logLevel = .info
+            case .warn: Purchases.logLevel = .warn
+            case .error: Purchases.logLevel = .error
+            }
+            #else
+            switch newValue {
+            case .verbose: Purchases.logLevel = LogLevel.VERBOSE
+            case .debug: Purchases.logLevel = LogLevel.DEBUG
+            case .info: Purchases.logLevel = LogLevel.INFO
+            case .warn: Purchases.logLevel = LogLevel.WARN
+            case .error: Purchases.logLevel = LogLevel.ERROR
+            }
+            #endif
+        }
     /// Sets the RevenueCat proxy URL.
     ///
     /// Set this before calling `configure(apiKey:)`.
