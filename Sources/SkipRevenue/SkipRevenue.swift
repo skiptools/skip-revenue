@@ -34,6 +34,8 @@ import com.revenuecat.purchases.awaitPurchase
 import com.revenuecat.purchases.awaitRestore
 import com.revenuecat.purchases.awaitSyncPurchases
 import com.revenuecat.purchases.models.Period
+import com.revenuecat.purchases.models.GoogleReplacementMode
+import com.revenuecat.purchases.CacheFetchPolicy
 #endif
 
 // MARK: - Value types
@@ -83,6 +85,16 @@ public enum RCFusePeriodType: Int, Sendable {
     case prepaid = 3
 }
 
+/// Who owns a purchase: the user, or a family member who shared it.
+///
+/// Raw values match RevenueCat's native `PurchaseOwnershipType` ordinals on
+/// both platforms.
+public enum RCFuseOwnershipType: Int, Sendable {
+    case purchased = 0
+    case familyShared = 1
+    case unknown = 2
+}
+
 /// The store through which an entitlement was purchased.
 ///
 /// Raw values match RevenueCat's native iOS `Store` ordinals. Android adds
@@ -99,6 +111,45 @@ public enum RCFuseStore: Int, Sendable {
     // Named `externalStore` (not `external`) because `external` is a reserved
     // Kotlin keyword and Skip does not escape it as an enum entry.
     case externalStore = 8
+}
+
+/// How Google Play settles a change from one subscription to another.
+///
+/// Mirrors `com.revenuecat.purchases.models.GoogleReplacementMode`, raw values
+/// match its ordinals (which are not Play Billing's own mode constants).
+/// Android only: on iOS, StoreKit derives upgrade, downgrade or crossgrade from
+/// the subscription group the two products share, and there is nothing to pass.
+public enum RCFuseGoogleReplacementMode: Int, Sendable {
+    /// Change now; the new price is charged at the next renewal.
+    case withoutProration = 0
+    /// Change now; the remaining time is converted by price and pushes the next
+    /// billing date forward.
+    case withTimeProration = 1
+    /// Change now; the new price is charged in full immediately, and the
+    /// remaining value of the old subscription is credited as time.
+    case chargeFullPrice = 2
+    /// Change now; the price difference for the remaining period is charged and
+    /// the billing date stays. Only allowed when the price per unit of time
+    /// increases.
+    case chargeProratedPrice = 3
+    /// Change at the next renewal.
+    case deferred = 4
+}
+
+/// How far a customer info read may fall back on the local cache.
+///
+/// Mirrors iOS `RevenueCat.CacheFetchPolicy` and Android
+/// `com.revenuecat.purchases.CacheFetchPolicy`; raw values match their ordinals,
+/// which agree across the two platforms.
+public enum RCFuseCacheFetchPolicy: Int, Sendable {
+    /// Return the cached value, or fail if there is none.
+    case fromCacheOnly = 0
+    /// Always fetch the current value from RevenueCat's servers.
+    case fetchCurrent = 1
+    /// Return the cached value if it is not stale, otherwise fetch.
+    case notStaleCachedOrFetched = 2
+    /// Return the cached value even if stale, otherwise fetch. The default.
+    case cachedOrFetched = 3
 }
 
 /// Intro-offer eligibility status. Mirrors iOS `RevenueCat.IntroEligibilityStatus`.
@@ -769,6 +820,24 @@ public final class RCFuseCustomerInfo: @unchecked Sendable {
     public var entitlements: RCFuseEntitlementInfos {
         return RCFuseEntitlementInfos(entitlementInfos: customerInfo.entitlements)
     }
+
+    /// Every subscription the customer has, keyed by product identifier,
+    /// including expired, cancelled and other-store ones.
+    /// Mirrors iOS `CustomerInfo.subscriptionsByProductIdentifier`.
+    ///
+    /// Entitlements only show the one subscription RevenueCat picked for each
+    /// entitlement. A second, still-renewing subscription in another store is
+    /// invisible there, and that is exactly the case a purchase must not
+    /// stack on top of.
+    public var subscriptionsByProductIdentifier: [String: RCFuseSubscriptionInfo] {
+        return customerInfo.subscriptionsByProductIdentifier.mapValues { RCFuseSubscriptionInfo(subscriptionInfo: $0) }
+    }
+
+    /// Where the customer manages the subscription RevenueCat considers
+    /// current, in the store it was bought in. Mirrors iOS `CustomerInfo.managementURL`.
+    public var managementURL: URL? {
+        return customerInfo.managementURL
+    }
 }
 #else
 public final class RCFuseCustomerInfo: KotlinConverting<com.revenuecat.purchases.CustomerInfo>, @unchecked Sendable {
@@ -832,6 +901,22 @@ public final class RCFuseCustomerInfo: KotlinConverting<com.revenuecat.purchases
     /// Mirrors iOS `CustomerInfo.entitlements: EntitlementInfos`.
     public var entitlements: RCFuseEntitlementInfos {
         return RCFuseEntitlementInfos(entitlementInfos: customerInfo.entitlements)
+    }
+
+    public var subscriptionsByProductIdentifier: [String: RCFuseSubscriptionInfo] {
+        var result: [String: RCFuseSubscriptionInfo] = [:]
+        let map = customerInfo.subscriptionsByProductIdentifier
+        for key in map.keys {
+            if let info = map[key] {
+                result[key] = RCFuseSubscriptionInfo(subscriptionInfo: info)
+            }
+        }
+        return result
+    }
+
+    public var managementURL: URL? {
+        guard let uri = customerInfo.managementURL else { return nil }
+        return URL(string: uri.toString())
     }
 }
 #endif
@@ -954,34 +1039,13 @@ public final class RCFuseEntitlementInfo: @unchecked Sendable {
     }
 
     /// The billing period the entitlement is in (normal/intro/trial/prepaid).
-    ///
-    /// The pinned iOS RevenueCat (4.44.2) predates `PeriodType.prepaid`, so it is
-    /// not matched here; the cross-platform `.prepaid` is only reachable from the
-    /// Android branch (whose SDK has `PREPAID`). Any case this SDK adds later falls
-    /// through to `.normal` until matched explicitly.
     public var periodType: RCFusePeriodType {
-        switch entitlementInfo.periodType {
-        case .normal: return .normal
-        case .intro: return .intro
-        case .trial: return .trial
-        @unknown default: return .normal
-        }
+        return rcFusePeriodType(entitlementInfo.periodType)
     }
 
     /// The store the entitlement was purchased through.
     public var store: RCFuseStore {
-        switch entitlementInfo.store {
-        case .appStore: return .appStore
-        case .macAppStore: return .macAppStore
-        case .playStore: return .playStore
-        case .stripe: return .stripe
-        case .promotional: return .promotional
-        case .unknownStore: return .unknownStore
-        case .amazon: return .amazon
-        case .rcBilling: return .rcBilling
-        case .external: return .externalStore
-        @unknown default: return .unknownStore
-        }
+        return rcFuseStore(entitlementInfo.store)
     }
 }
 #else
@@ -1023,34 +1087,252 @@ public final class RCFuseEntitlementInfo: KotlinConverting<com.revenuecat.purcha
         return Date(platformValue: d)
     }
 
-    // The Kotlin enums stringify to their UPPER_SNAKE_CASE `name`; match the same
-    // idiom used by `RCFusePackage.packageType` rather than pattern-matching the
-    // Kotlin enum cases directly.
     public var periodType: RCFusePeriodType {
-        let name = "\(entitlementInfo.periodType)"
-        switch name {
-        case "NORMAL": return .normal
-        case "INTRO": return .intro
-        case "TRIAL": return .trial
-        case "PREPAID": return .prepaid
-        default: return .normal
-        }
+        return rcFusePeriodType("\(entitlementInfo.periodType)")
     }
 
     public var store: RCFuseStore {
-        let name = "\(entitlementInfo.store)"
-        switch name {
-        case "APP_STORE": return .appStore
-        case "MAC_APP_STORE": return .macAppStore
-        case "PLAY_STORE": return .playStore
-        case "STRIPE": return .stripe
-        case "PROMOTIONAL": return .promotional
-        case "AMAZON": return .amazon
-        case "RC_BILLING": return .rcBilling
-        case "EXTERNAL": return .externalStore
-        // UNKNOWN_STORE plus Android-only PADDLE/TEST_STORE have no iOS ordinal.
-        default: return .unknownStore
+        return rcFuseStore("\(entitlementInfo.store)")
+    }
+}
+#endif
+
+// Store and period mapping is shared by `RCFuseEntitlementInfo` and
+// `RCFuseSubscriptionInfo`. On Android the Kotlin enums stringify to their
+// UPPER_SNAKE_CASE `name`, the same idiom as `RCFusePackage.packageType`.
+#if !SKIP
+func rcFusePeriodType(_ periodType: RevenueCat.PeriodType) -> RCFusePeriodType {
+    switch periodType {
+    case .normal: return .normal
+    case .intro: return .intro
+    case .trial: return .trial
+    case .prepaid: return .prepaid
+    @unknown default: return .normal
+    }
+}
+
+func rcFuseStore(_ store: RevenueCat.Store) -> RCFuseStore {
+    switch store {
+    case .appStore: return .appStore
+    case .macAppStore: return .macAppStore
+    case .playStore: return .playStore
+    case .stripe: return .stripe
+    case .promotional: return .promotional
+    case .unknownStore: return .unknownStore
+    case .amazon: return .amazon
+    case .rcBilling: return .rcBilling
+    case .external: return .externalStore
+    @unknown default: return .unknownStore
+    }
+}
+#else
+func rcFusePeriodType(_ name: String) -> RCFusePeriodType {
+    switch name {
+    case "NORMAL": return .normal
+    case "INTRO": return .intro
+    case "TRIAL": return .trial
+    case "PREPAID": return .prepaid
+    default: return .normal
+    }
+}
+
+func rcFuseStore(_ name: String) -> RCFuseStore {
+    switch name {
+    case "APP_STORE": return .appStore
+    case "MAC_APP_STORE": return .macAppStore
+    case "PLAY_STORE": return .playStore
+    case "STRIPE": return .stripe
+    case "PROMOTIONAL": return .promotional
+    case "AMAZON": return .amazon
+    case "RC_BILLING": return .rcBilling
+    case "EXTERNAL": return .externalStore
+    // UNKNOWN_STORE plus the stores without an iOS ordinal (PADDLE, TEST_STORE).
+    default: return .unknownStore
+    }
+}
+#endif
+
+/// Wrapper for a single RevenueCat `SubscriptionInfo`: one subscription
+/// contract, independent of which entitlement it unlocks.
+/// Mirrors iOS `RevenueCat.SubscriptionInfo`.
+#if !SKIP
+public final class RCFuseSubscriptionInfo: @unchecked Sendable {
+    public let subscriptionInfo: RevenueCat.SubscriptionInfo
+
+    public init(subscriptionInfo: RevenueCat.SubscriptionInfo) {
+        self.subscriptionInfo = subscriptionInfo
+    }
+
+    /// On Android the subscription ID without the base plan, e.g.
+    /// `com.example.pro_yearly`, which is what a replacement expects.
+    public var productIdentifier: String {
+        return subscriptionInfo.productIdentifier
+    }
+
+    /// The base plan identifier, if the subscription has one.
+    public var productPlanIdentifier: String? {
+        return subscriptionInfo.productPlanIdentifier
+    }
+
+    /// Computed by the SDK against the request date when the customer info was
+    /// fetched, not re-evaluated later. Read it together with `expiresDate`.
+    public var isActive: Bool {
+        return subscriptionInfo.isActive
+    }
+
+    /// `false` for a cancellation AND for a billing issue. Use
+    /// `unsubscribeDetectedAt` and `billingIssuesDetectedAt` to tell them apart.
+    public var willRenew: Bool {
+        return subscriptionInfo.willRenew
+    }
+
+    public var purchaseDate: Date {
+        return subscriptionInfo.purchaseDate
+    }
+
+    public var originalPurchaseDate: Date? {
+        return subscriptionInfo.originalPurchaseDate
+    }
+
+    public var expiresDate: Date? {
+        return subscriptionInfo.expiresDate
+    }
+
+    /// While a billing issue is being retried the subscription still runs and
+    /// still bills, although `isActive` and `willRenew` look like it is over.
+    public var gracePeriodExpiresDate: Date? {
+        return subscriptionInfo.gracePeriodExpiresDate
+    }
+
+    public var unsubscribeDetectedAt: Date? {
+        return subscriptionInfo.unsubscribeDetectedAt
+    }
+
+    public var billingIssuesDetectedAt: Date? {
+        return subscriptionInfo.billingIssuesDetectedAt
+    }
+
+    public var refundedAt: Date? {
+        return subscriptionInfo.refundedAt
+    }
+
+    /// When a paused subscription resumes and bills again.
+    public var autoResumeDate: Date? {
+        return subscriptionInfo.autoResumeDate
+    }
+
+    /// Where this subscription is managed, in the store it was bought in.
+    public var managementURL: URL? {
+        return subscriptionInfo.managementURL
+    }
+
+    public var ownershipType: RCFuseOwnershipType {
+        switch subscriptionInfo.ownershipType {
+        case .purchased: return .purchased
+        case .familyShared: return .familyShared
+        case .unknown: return .unknown
+        @unknown default: return .unknown
         }
+    }
+
+    public var periodType: RCFusePeriodType {
+        return rcFusePeriodType(subscriptionInfo.periodType)
+    }
+
+    public var store: RCFuseStore {
+        return rcFuseStore(subscriptionInfo.store)
+    }
+}
+#else
+public final class RCFuseSubscriptionInfo: KotlinConverting<com.revenuecat.purchases.SubscriptionInfo>, @unchecked Sendable {
+    public let subscriptionInfo: com.revenuecat.purchases.SubscriptionInfo
+
+    public init(subscriptionInfo: com.revenuecat.purchases.SubscriptionInfo) {
+        self.subscriptionInfo = subscriptionInfo
+    }
+
+    // SKIP @nooverride
+    public override func kotlin(nocopy: Bool = false) -> com.revenuecat.purchases.SubscriptionInfo {
+        subscriptionInfo
+    }
+
+    public var productIdentifier: String {
+        return subscriptionInfo.productIdentifier
+    }
+
+    public var productPlanIdentifier: String? {
+        return subscriptionInfo.productPlanIdentifier
+    }
+
+    public var isActive: Bool {
+        return subscriptionInfo.isActive
+    }
+
+    public var willRenew: Bool {
+        return subscriptionInfo.willRenew
+    }
+
+    public var purchaseDate: Date {
+        return Date(platformValue: subscriptionInfo.purchaseDate)
+    }
+
+    public var originalPurchaseDate: Date? {
+        guard let d = subscriptionInfo.originalPurchaseDate else { return nil }
+        return Date(platformValue: d)
+    }
+
+    public var expiresDate: Date? {
+        guard let d = subscriptionInfo.expiresDate else { return nil }
+        return Date(platformValue: d)
+    }
+
+    public var gracePeriodExpiresDate: Date? {
+        guard let d = subscriptionInfo.gracePeriodExpiresDate else { return nil }
+        return Date(platformValue: d)
+    }
+
+    public var unsubscribeDetectedAt: Date? {
+        guard let d = subscriptionInfo.unsubscribeDetectedAt else { return nil }
+        return Date(platformValue: d)
+    }
+
+    public var billingIssuesDetectedAt: Date? {
+        guard let d = subscriptionInfo.billingIssuesDetectedAt else { return nil }
+        return Date(platformValue: d)
+    }
+
+    public var refundedAt: Date? {
+        guard let d = subscriptionInfo.refundedAt else { return nil }
+        return Date(platformValue: d)
+    }
+
+    /// A paused subscription is neither active nor cancelled nor in a billing
+    /// issue, so without this date it looks like one that simply ran out.
+    public var autoResumeDate: Date? {
+        guard let d = subscriptionInfo.autoResumeDate else { return nil }
+        return Date(platformValue: d)
+    }
+
+    public var managementURL: URL? {
+        guard let uri = subscriptionInfo.managementURL else { return nil }
+        return URL(string: uri.toString())
+    }
+
+    public var ownershipType: RCFuseOwnershipType {
+        let name = "\(subscriptionInfo.ownershipType)"
+        switch name {
+        case "PURCHASED": return .purchased
+        case "FAMILY_SHARED": return .familyShared
+        default: return .unknown
+        }
+    }
+
+    public var periodType: RCFusePeriodType {
+        return rcFusePeriodType("\(subscriptionInfo.periodType)")
+    }
+
+    public var store: RCFuseStore {
+        return rcFuseStore("\(subscriptionInfo.store)")
     }
 }
 #endif
@@ -1277,16 +1559,35 @@ public struct RevenueCatFuse: @unchecked Sendable {
     /// Purchase a package (Android) — requires the host `Activity`, wrapped in
     /// `RCFuseAndroidActivity` so the bridge thunk can capture it across a
     /// `Task { ... }` boundary under Swift 6 strict concurrency.
-    public func purchase(package: RCFusePackage, activity: RCFuseAndroidActivity) async throws -> RCFuseCustomerInfo {
+    ///
+    /// Pass `replacingProductId` to replace a running subscription. Play has no
+    /// notion of a subscription group: without an old product it sells the new
+    /// subscription next to the running one and bills both. iOS derives the same
+    /// change from the subscription group the two products share, so there is no
+    /// counterpart to these parameters there.
+    ///
+    /// - Parameters:
+    ///   - replacingProductId: the subscription ID to replace, without the base
+    ///     plan (`RCFuseSubscriptionInfo.productIdentifier`), or `nil` for a
+    ///     plain purchase.
+    ///   - replacementMode: how Play settles the remaining value of the old
+    ///     subscription, or `nil` to leave RevenueCat's own default in place.
+    public func purchase(package: RCFusePackage, activity: RCFuseAndroidActivity, replacingProductId: String? = nil, replacementMode: RCFuseGoogleReplacementMode? = nil) async throws -> RCFuseCustomerInfo {
         guard let androidActivity = activity.activity as? android.app.Activity else {
             throw StoreError.unknown
         }
 
         let kotlinPackage = package.kotlin()
-        let params = PurchaseParams.Builder(androidActivity, kotlinPackage).build()
+        var builder = PurchaseParams.Builder(androidActivity, kotlinPackage)
+        if let replacingProductId, !replacingProductId.isEmpty {
+            builder = builder.oldProductId(replacingProductId)
+            if let replacementMode {
+                builder = builder.googleReplacementMode(googleReplacementMode(replacementMode))
+            }
+        }
 
         do {
-            let result = Purchases.sharedInstance.awaitPurchase(params)
+            let result = Purchases.sharedInstance.awaitPurchase(builder.build())
             let wrappedCustomerInfo = RCFuseCustomerInfo(customerInfo: result.customerInfo)
             Self.cachedCustomerInfoValue = wrappedCustomerInfo
             return wrappedCustomerInfo
@@ -1295,6 +1596,16 @@ public struct RevenueCatFuse: @unchecked Sendable {
                 throw StoreError.userCancelled
             }
             throw error
+        }
+    }
+
+    func googleReplacementMode(_ mode: RCFuseGoogleReplacementMode) -> GoogleReplacementMode {
+        switch mode {
+        case .withTimeProration: return GoogleReplacementMode.WITH_TIME_PRORATION
+        case .chargeProratedPrice: return GoogleReplacementMode.CHARGE_PRORATED_PRICE
+        case .chargeFullPrice: return GoogleReplacementMode.CHARGE_FULL_PRICE
+        case .withoutProration: return GoogleReplacementMode.WITHOUT_PRORATION
+        case .deferred: return GoogleReplacementMode.DEFERRED
         }
     }
     #endif
@@ -1399,6 +1710,43 @@ public struct RevenueCatFuse: @unchecked Sendable {
         return wrappedCustomerInfo
         #endif
     }
+
+    /// Get current customer info with an explicit cache policy.
+    /// Mirrors iOS `Purchases.customerInfo(fetchPolicy:)`.
+    ///
+    /// `getCustomerInfo()` may answer from a cache that is minutes old, which
+    /// is the wrong answer for a caller that has to know the customer's
+    /// subscriptions right now.
+    public func getCustomerInfo(fetchPolicy: RCFuseCacheFetchPolicy) async throws -> RCFuseCustomerInfo {
+        #if !SKIP
+        let customerInfo = try await Purchases.shared.customerInfo(fetchPolicy: cacheFetchPolicy(fetchPolicy))
+        #else
+        let customerInfo = Purchases.sharedInstance.awaitCustomerInfo(cacheFetchPolicy(fetchPolicy))
+        #endif
+        let wrappedCustomerInfo = RCFuseCustomerInfo(customerInfo: customerInfo)
+        Self.cachedCustomerInfoValue = wrappedCustomerInfo
+        return wrappedCustomerInfo
+    }
+
+    #if !SKIP
+    func cacheFetchPolicy(_ policy: RCFuseCacheFetchPolicy) -> CacheFetchPolicy {
+        switch policy {
+        case .fromCacheOnly: return .fromCacheOnly
+        case .fetchCurrent: return .fetchCurrent
+        case .notStaleCachedOrFetched: return .notStaleCachedOrFetched
+        case .cachedOrFetched: return .cachedOrFetched
+        }
+    }
+    #else
+    func cacheFetchPolicy(_ policy: RCFuseCacheFetchPolicy) -> CacheFetchPolicy {
+        switch policy {
+        case .fromCacheOnly: return CacheFetchPolicy.CACHE_ONLY
+        case .fetchCurrent: return CacheFetchPolicy.FETCH_CURRENT
+        case .notStaleCachedOrFetched: return CacheFetchPolicy.NOT_STALE_CACHED_OR_CURRENT
+        case .cachedOrFetched: return CacheFetchPolicy.CACHED_OR_FETCHED
+        }
+    }
+    #endif
 
     /// Set subscriber attributes for the current user.
     public func setAttributes(_ attributes: [String: String]) {

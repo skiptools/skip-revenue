@@ -48,6 +48,64 @@ final class SkipRevenueTests: XCTestCase {
         XCTAssertLessThan(RCFusePackageType.monthly, RCFusePackageType.annual)
     }
 
+    // Raw values are the native ordinals on both platforms, so they are part of
+    // the contract rather than an implementation detail.
+    func testGoogleReplacementModeCases() throws {
+        XCTAssertEqual(RCFuseGoogleReplacementMode.withoutProration.rawValue, 0)
+        XCTAssertEqual(RCFuseGoogleReplacementMode.withTimeProration.rawValue, 1)
+        XCTAssertEqual(RCFuseGoogleReplacementMode.chargeFullPrice.rawValue, 2)
+        XCTAssertEqual(RCFuseGoogleReplacementMode.chargeProratedPrice.rawValue, 3)
+        XCTAssertEqual(RCFuseGoogleReplacementMode.deferred.rawValue, 4)
+    }
+
+    func testCacheFetchPolicyCases() throws {
+        XCTAssertEqual(RCFuseCacheFetchPolicy.fromCacheOnly.rawValue, 0)
+        XCTAssertEqual(RCFuseCacheFetchPolicy.fetchCurrent.rawValue, 1)
+        XCTAssertEqual(RCFuseCacheFetchPolicy.notStaleCachedOrFetched.rawValue, 2)
+        XCTAssertEqual(RCFuseCacheFetchPolicy.cachedOrFetched.rawValue, 3)
+    }
+
+    func testOwnershipTypeCases() throws {
+        XCTAssertEqual(RCFuseOwnershipType.purchased.rawValue, 0)
+        XCTAssertEqual(RCFuseOwnershipType.familyShared.rawValue, 1)
+        XCTAssertEqual(RCFuseOwnershipType.unknown.rawValue, 2)
+    }
+
+    // The mapping to the native type is what a caller actually gets, so assert
+    // the mapped value rather than the raw value alone: a swapped case would
+    // charge the customer under a different mode and still keep the raw values
+    // intact.
+    func testCacheFetchPolicyMapsToNative() throws {
+        let service = RevenueCatFuse.shared
+        #if !SKIP
+        XCTAssertEqual(service.cacheFetchPolicy(RCFuseCacheFetchPolicy.fromCacheOnly).rawValue, RCFuseCacheFetchPolicy.fromCacheOnly.rawValue)
+        XCTAssertEqual(service.cacheFetchPolicy(RCFuseCacheFetchPolicy.fetchCurrent).rawValue, RCFuseCacheFetchPolicy.fetchCurrent.rawValue)
+        XCTAssertEqual(service.cacheFetchPolicy(RCFuseCacheFetchPolicy.notStaleCachedOrFetched).rawValue, RCFuseCacheFetchPolicy.notStaleCachedOrFetched.rawValue)
+        XCTAssertEqual(service.cacheFetchPolicy(RCFuseCacheFetchPolicy.cachedOrFetched).rawValue, RCFuseCacheFetchPolicy.cachedOrFetched.rawValue)
+        #else
+        XCTAssertEqual("\(service.cacheFetchPolicy(RCFuseCacheFetchPolicy.fromCacheOnly))", "CACHE_ONLY")
+        XCTAssertEqual("\(service.cacheFetchPolicy(RCFuseCacheFetchPolicy.fetchCurrent))", "FETCH_CURRENT")
+        XCTAssertEqual("\(service.cacheFetchPolicy(RCFuseCacheFetchPolicy.notStaleCachedOrFetched))", "NOT_STALE_CACHED_OR_CURRENT")
+        XCTAssertEqual("\(service.cacheFetchPolicy(RCFuseCacheFetchPolicy.cachedOrFetched))", "CACHED_OR_FETCHED")
+        // The raw values claim to be the native ordinals; hold them to it.
+        XCTAssertEqual(service.cacheFetchPolicy(RCFuseCacheFetchPolicy.notStaleCachedOrFetched).ordinal, RCFuseCacheFetchPolicy.notStaleCachedOrFetched.rawValue)
+        #endif
+    }
+
+    #if SKIP
+    func testGoogleReplacementModeMapsToNative() throws {
+        let service = RevenueCatFuse.shared
+        XCTAssertEqual("\(service.googleReplacementMode(RCFuseGoogleReplacementMode.withoutProration))", "WITHOUT_PRORATION")
+        XCTAssertEqual("\(service.googleReplacementMode(RCFuseGoogleReplacementMode.withTimeProration))", "WITH_TIME_PRORATION")
+        XCTAssertEqual("\(service.googleReplacementMode(RCFuseGoogleReplacementMode.chargeFullPrice))", "CHARGE_FULL_PRICE")
+        XCTAssertEqual("\(service.googleReplacementMode(RCFuseGoogleReplacementMode.chargeProratedPrice))", "CHARGE_PRORATED_PRICE")
+        XCTAssertEqual("\(service.googleReplacementMode(RCFuseGoogleReplacementMode.deferred))", "DEFERRED")
+        for mode in [RCFuseGoogleReplacementMode.withoutProration, RCFuseGoogleReplacementMode.withTimeProration, RCFuseGoogleReplacementMode.chargeFullPrice, RCFuseGoogleReplacementMode.chargeProratedPrice, RCFuseGoogleReplacementMode.deferred] {
+            XCTAssertEqual(service.googleReplacementMode(mode).ordinal, mode.rawValue)
+        }
+    }
+    #endif
+
     func testRevenueCatFuseSingleton() throws {
         let service = RevenueCatFuse.shared
         XCTAssertNotNil(service)
