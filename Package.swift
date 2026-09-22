@@ -36,7 +36,12 @@ let package = Package(
     ]
 )
 
-if Context.environment["SKIP_BRIDGE"] ?? "0" != "0" {
+// SKIP_DYNAMIC_LIBRARIES and SKIP_BRIDGE both enforce building as dynamic
+// libraries; SKIP_BRIDGE additionally puts the skipstone plugin in bridge mode
+let bridgeMode = (Context.environment["SKIP_BRIDGE"] ?? "0") != "0"
+let forceDylib = bridgeMode || (Context.environment["SKIP_DYNAMIC_LIBRARIES"] ?? "0") != "0"
+
+if bridgeMode {
     // Match skip-firebase's bridge configuration: depend on skip-fuse (modern
     // bridge generator emits `BridgedFromKotlin` redeclarations for types
     // declared inside `#if !SKIP_BRIDGE`, which lets the entire impl live in
@@ -54,6 +59,9 @@ if Context.environment["SKIP_BRIDGE"] ?? "0" != "0" {
             target.dependencies += [.product(name: "SkipFuseUI", package: "skip-fuse-ui")]
         }
     })
+}
+
+if forceDylib {
     // all library types must be dynamic to support bridging
     package.products = package.products.map({ product in
         guard let libraryProduct = product as? Product.Library else { return product }
