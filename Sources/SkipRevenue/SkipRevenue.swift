@@ -1435,10 +1435,19 @@ public struct RevenueCatFuse: @unchecked Sendable {
     /// mapping product identifiers to their eligibility status.
     ///
     /// iOS: Uses native RevenueCat API.
-    /// Android: Checks if user has ever had any entitlement (if so, not eligible
-    /// for intro). Google Play handles eligibility automatically — if an offer
-    /// appears in offerings, the user is eligible for it. This mirrors iOS
-    /// behavior at the cost of a heuristic on Android.
+    /// Android: Reads the answer Google Play already gives. Play only returns the
+    /// subscription offers the signed-in Google account is eligible for, so a
+    /// product whose subscription options contain a free trial is `.eligible`,
+    /// and one without is `.ineligible` (Play does not distinguish "no offer
+    /// exists" from "not eligible"). A product that is in no current offering is
+    /// `.unknown`.
+    ///
+    /// This used to be a heuristic: any RevenueCat entitlement history meant
+    /// ineligible, none meant eligible. Play decides per Google account and per
+    /// the offer's eligibility rule (e.g. "never had any subscription in this
+    /// app"), while a reinstall gets a fresh anonymous RevenueCat customer. The
+    /// app then promised a free trial and the Play purchase sheet showed the
+    /// full price.
     public func checkTrialOrIntroEligibility(productIdentifiers: [String]) async throws -> [String: RCFuseIntroEligibility] {
         #if !SKIP
         let eligibility = await Purchases.shared.checkTrialOrIntroDiscountEligibility(productIdentifiers: productIdentifiers)
@@ -1461,12 +1470,30 @@ public struct RevenueCatFuse: @unchecked Sendable {
         }
         return result
         #else
-        let customerInfo = Purchases.sharedInstance.awaitCustomerInfo()
-        let hasAnyEntitlementHistory = customerInfo.entitlements.all.size > 0
+        let offerings = Purchases.sharedInstance.awaitOfferings()
+        // Subscription id -> whether any of its base plans carries a free trial
+        // the current Google account may take. Play product ids on Android are
+        // "subscriptionId:basePlanId"; callers pass the subscription id.
+        var hasTrialBySubscription: [String: Bool] = [:]
+        for (_, offering) in offerings.all {
+            for package in offering.availablePackages {
+                let product = package.product
+                let productId: String = product.id
+                let subscriptionId: String = productId.substringBefore(":")
+                let offersTrial: Bool = product.subscriptionOptions?.freeTrial != nil
+                hasTrialBySubscription[subscriptionId] = (hasTrialBySubscription[subscriptionId] ?? false) || offersTrial
+                hasTrialBySubscription[productId] = (hasTrialBySubscription[productId] ?? false) || offersTrial
+            }
+        }
 
         var result: [String: RCFuseIntroEligibility] = [:]
         for productId in productIdentifiers {
-            let status: RCFuseIntroEligibilityStatus = hasAnyEntitlementHistory ? .ineligible : .eligible
+            let status: RCFuseIntroEligibilityStatus
+            if let offersTrial = hasTrialBySubscription[productId] {
+                status = offersTrial ? .eligible : .ineligible
+            } else {
+                status = .unknown
+            }
             result[productId] = RCFuseIntroEligibility(status: status)
         }
         return result
