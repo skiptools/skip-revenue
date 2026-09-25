@@ -599,6 +599,12 @@ public final class RCFuseStoreProduct: @unchecked Sendable {
         return RCFuseSubscriptionPeriod(unit: unit, value: period.value)
     }
 
+    /// Android only: the Google Play subscription option that purchasing this product buys.
+    /// Always `nil` on iOS.
+    public var defaultSubscriptionOptionId: String? {
+        return nil
+    }
+
     public var subscriptionPeriod: RCFuseSubscriptionPeriod? {
         guard let period = product.subscriptionPeriod else { return nil }
         let unit: RCFuseSubscriptionPeriodUnit
@@ -676,6 +682,14 @@ public final class RCFuseStoreProduct: KotlinConverting<com.revenuecat.purchases
         let period = product.defaultOption?.freePhase?.billingPeriod ??
             product.subscriptionOptions?.freeTrial?.freePhase?.billingPeriod
         return self.subscriptionPeriod(from: period)
+    }
+
+    /// The id of the Google Play subscription option that purchasing this product (or its
+    /// package) buys: `basePlanId`, or `basePlanId:offerId` for an offer such as a free trial.
+    /// RevenueCat picks it as `defaultOption`; `nil` for non-subscription products, and a
+    /// simulated id under a RevenueCat Test Store key.
+    public var defaultSubscriptionOptionId: String? {
+        return product.defaultOption?.id
     }
 
     public var subscriptionPeriod: RCFuseSubscriptionPeriod? {
