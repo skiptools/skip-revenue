@@ -57,7 +57,7 @@ final class SkipRevenueTests: XCTestCase {
         // Round-trips every level through the underlying Purchases.logLevel on both platforms. (#4)
         let service = RevenueCatFuse.shared
         for level: RCFuseLogLevel in [.verbose, .debug, .info, .warn, .error] {
-            service.logLevel = level
+            service.setLogLevel(level)
             XCTAssertEqual(level, service.logLevel)
         }
         XCTAssertEqual(RCFuseLogLevel.verbose.rawValue, "verbose")

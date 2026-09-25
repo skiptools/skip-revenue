@@ -1132,48 +1132,51 @@ public struct RevenueCatFuse: @unchecked Sendable {
 
     /// The logging verbosity of the underlying RevenueCat SDK, mirroring `Purchases.logLevel`.
     ///
-    /// `configure(...)` enables `.debug` by default; set this afterwards (e.g. to `.verbose`)
+    /// `configure(...)` enables `.debug` by default; call `setLogLevel(_:)` afterwards (e.g. with `.verbose`)
     /// to surface detailed purchase/billing diagnostics in the console or logcat. (#4)
     public var logLevel: RCFuseLogLevel {
-        get {
-            #if !SKIP
-            switch Purchases.logLevel {
-            case .verbose: return .verbose
-            case .debug: return .debug
-            case .info: return .info
-            case .warn: return .warn
-            case .error: return .error
-            @unknown default: return .debug
-            }
-            #else
-            switch "\(Purchases.logLevel)" {
-            case "VERBOSE": return .verbose
-            case "INFO": return .info
-            case "WARN": return .warn
-            case "ERROR": return .error
-            default: return .debug
-            }
-            #endif
+        #if !SKIP
+        switch Purchases.logLevel {
+        case .verbose: return .verbose
+        case .debug: return .debug
+        case .info: return .info
+        case .warn: return .warn
+        case .error: return .error
+        @unknown default: return .debug
         }
-        nonmutating set {
-            #if !SKIP
-            switch newValue {
-            case .verbose: Purchases.logLevel = .verbose
-            case .debug: Purchases.logLevel = .debug
-            case .info: Purchases.logLevel = .info
-            case .warn: Purchases.logLevel = .warn
-            case .error: Purchases.logLevel = .error
-            }
-            #else
-            switch newValue {
-            case .verbose: Purchases.logLevel = LogLevel.VERBOSE
-            case .debug: Purchases.logLevel = LogLevel.DEBUG
-            case .info: Purchases.logLevel = LogLevel.INFO
-            case .warn: Purchases.logLevel = LogLevel.WARN
-            case .error: Purchases.logLevel = LogLevel.ERROR
-            }
-            #endif
+        #else
+        switch "\(Purchases.logLevel)" {
+        case "VERBOSE": return .verbose
+        case "INFO": return .info
+        case "WARN": return .warn
+        case "ERROR": return .error
+        default: return .debug
         }
+        #endif
+    }
+
+    /// Sets the logging verbosity of the underlying RevenueCat SDK, mirroring `Purchases.logLevel`.
+    ///
+    /// A method rather than a setter on `logLevel`: `RevenueCatFuse` is a struct, and the bridge
+    /// cannot forward a setter on a bridged struct.
+    public func setLogLevel(_ level: RCFuseLogLevel) {
+        #if !SKIP
+        switch level {
+        case .verbose: Purchases.logLevel = .verbose
+        case .debug: Purchases.logLevel = .debug
+        case .info: Purchases.logLevel = .info
+        case .warn: Purchases.logLevel = .warn
+        case .error: Purchases.logLevel = .error
+        }
+        #else
+        switch level {
+        case .verbose: Purchases.logLevel = LogLevel.VERBOSE
+        case .debug: Purchases.logLevel = LogLevel.DEBUG
+        case .info: Purchases.logLevel = LogLevel.INFO
+        case .warn: Purchases.logLevel = LogLevel.WARN
+        case .error: Purchases.logLevel = LogLevel.ERROR
+        }
+        #endif
     }
 
     /// Log in a user with the given user ID. Mirrors iOS `Purchases.logIn(_:)`.
