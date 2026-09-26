@@ -5,6 +5,20 @@ import XCTest
 import OSLog
 import Foundation
 @testable import SkipRevenue
+#if SKIP
+import com.android.billingclient.api.ProductDetails
+import com.revenuecat.purchases.ProductType
+import com.revenuecat.purchases.models.GooglePurchasingData
+import com.revenuecat.purchases.models.GoogleStoreProduct
+import com.revenuecat.purchases.models.GoogleSubscriptionOption
+import com.revenuecat.purchases.models.Period
+import com.revenuecat.purchases.models.Price
+import com.revenuecat.purchases.models.PricingPhase
+import com.revenuecat.purchases.models.RecurrenceMode
+import com.revenuecat.purchases.models.SubscriptionOptions
+#else
+import RevenueCat
+#endif
 
 let logger: Logger = Logger(subsystem: "SkipRevenue", category: "Tests")
 
@@ -82,6 +96,47 @@ final class SkipRevenueTests: XCTestCase {
         XCTAssertEqual(RCFuseStore(rawValue: 6), .amazon)
         XCTAssertNil(RCFuseStore(rawValue: 99))
     }
+
+    #if SKIP
+    // Purchasing a package buys its product's `defaultOption`, which RevenueCat
+    // picks from the base plan and its offers: the longest free trial, not the first.
+    func testDefaultSubscriptionOptionId() throws {
+        let yearly = PricingPhase(billingPeriod: Period(value: 1, unit: Period.Unit.YEAR, iso8601: "P1Y"), recurrenceMode: RecurrenceMode.INFINITE_RECURRING, billingCycleCount: nil, price: Price(formatted: "€59.99", amountMicros: Int64(59_990_000), currencyCode: "EUR"))
+        let threeDays = PricingPhase(billingPeriod: Period(value: 3, unit: Period.Unit.DAY, iso8601: "P3D"), recurrenceMode: RecurrenceMode.FINITE_RECURRING, billingCycleCount: 1, price: Price(formatted: "Free", amountMicros: Int64(0), currencyCode: "EUR"))
+        let oneWeek = PricingPhase(billingPeriod: Period(value: 1, unit: Period.Unit.WEEK, iso8601: "P1W"), recurrenceMode: RecurrenceMode.FINITE_RECURRING, billingCycleCount: 1, price: Price(formatted: "Free", amountMicros: Int64(0), currencyCode: "EUR"))
+
+        let basePlan = subscriptionOption(offerId: nil, phases: listOf(yearly))
+        let shortTrial = subscriptionOption(offerId: "short-trial", phases: listOf(threeDays, yearly))
+        let freeTrial = subscriptionOption(offerId: "free-trial", phases: listOf(oneWeek, yearly))
+
+        let withTrials = googleStoreProduct(options: listOf(basePlan, shortTrial, freeTrial))
+        let purchased = (withTrials.purchasingData as! GooglePurchasingData.Subscription).optionId
+        XCTAssertEqual("yearly:free-trial", purchased)
+        XCTAssertEqual(purchased, RCFuseStoreProduct(product: withTrials).defaultSubscriptionOptionId)
+        XCTAssertEqual("yearly", RCFuseStoreProduct(product: googleStoreProduct(options: listOf(basePlan))).defaultSubscriptionOptionId)
+    }
+
+    private func subscriptionOption(offerId: String?, phases: kotlin.collections.List<PricingPhase>) -> GoogleSubscriptionOption {
+        return GoogleSubscriptionOption(productId: "com.example.pro", basePlanId: "yearly", offerId: offerId, pricingPhases: phases, tags: listOf(), productDetails: productDetails(), offerToken: "token")
+    }
+
+    private func googleStoreProduct(options: kotlin.collections.List<GoogleSubscriptionOption>) -> GoogleStoreProduct {
+        let subscriptionOptions = SubscriptionOptions(options)
+        return GoogleStoreProduct(productId: "com.example.pro", basePlanId: "yearly", type: ProductType.SUBS, price: Price(formatted: "€59.99", amountMicros: Int64(59_990_000), currencyCode: "EUR"), name: "Pro", title: "Pro", description: "Pro", period: Period(value: 1, unit: Period.Unit.YEAR, iso8601: "P1Y"), subscriptionOptions: subscriptionOptions, defaultOption: subscriptionOptions.defaultOffer, productDetails: productDetails())
+    }
+
+    // ProductDetails has no public constructor; RevenueCat only reads it when talking to Play.
+    private func productDetails() -> ProductDetails {
+        let constructor = java.lang.Class.forName("com.android.billingclient.api.ProductDetails").getDeclaredConstructor(java.lang.Class.forName("java.lang.String"))
+        constructor.setAccessible(true)
+        return constructor.newInstance("{\"productId\":\"com.example.pro\",\"type\":\"subs\",\"title\":\"Pro\",\"name\":\"Pro\",\"description\":\"Pro\"}") as! ProductDetails
+    }
+    #else
+    func testDefaultSubscriptionOptionId() throws {
+        let product = TestStoreProduct(localizedTitle: "Pro", price: 59.99, currencyCode: "EUR", localizedPriceString: "€59.99", productIdentifier: "com.example.pro", productType: .autoRenewableSubscription, localizedDescription: "Pro", locale: Locale(identifier: "de_DE"))
+        XCTAssertNil(RCFuseStoreProduct(product: product.toStoreProduct()).defaultSubscriptionOptionId)
+    }
+    #endif
 }
 
 struct TestData : Codable, Hashable {
