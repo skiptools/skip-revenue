@@ -62,9 +62,18 @@ if bridgeMode {
 }
 
 if forceDylib {
-    // all library types must be dynamic to support bridging
+    // all library types must be dynamic to support bridging, except `SkipRevenue`:
+    // `SkipRevenueUI` depends on it, so an app that links both would otherwise have
+    // `SkipRevenue` as a dynamic product *and* as a static dependency of another
+    // dynamic product, which fails the Android native build ("is linked as a static
+    // library ... but cannot be built dynamically because there is a package product
+    // with the same name"). Leaving its type automatic lets SwiftPM pick one linkage,
+    // as skip-firebase does for SkipFirebaseCore.
     package.products = package.products.map({ product in
         guard let libraryProduct = product as? Product.Library else { return product }
+        if libraryProduct.name == "SkipRevenue" {
+            return .library(name: libraryProduct.name, type: nil, targets: libraryProduct.targets)
+        }
         return .library(name: libraryProduct.name, type: .dynamic, targets: libraryProduct.targets)
     })
 }
