@@ -1,5 +1,4 @@
 // Copyright 2023–2026 Skip
-// SPDX-License-Identifier: MPL-2.0
 
 // File structure mirrors `skip-firebase` (Firestore, Functions, …): the
 // entire implementation lives inside `#if !SKIP_BRIDGE`. The bridge
