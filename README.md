@@ -512,6 +512,7 @@ The main service singleton for all RevenueCat operations.
 | `price: Double` | Numeric price value |
 | `currencyCode: String?` | Currency code (e.g., "USD") |
 | `localizedIntroductoryPriceString: String?` | Intro offer price (iOS only) |
+| `defaultSubscriptionOptionId: String?` | The Google Play subscription option a purchase of this product buys, e.g. `"yearly:free-trial"` or `"yearly"` (Android only) |
 
 ### RCFuseCustomerInfo
 
